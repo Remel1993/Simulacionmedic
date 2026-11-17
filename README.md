@@ -1,11 +1,14 @@
-<div align="center">
+# Medical Case Simulator - Simulador Clínico Offline
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Simulador clínico educativo **100 % offline** con 88 casos curados, motor de paciente virtual determinista, evolución fisiológica en tiempo real y auditoría diagnóstica/terapéutica de 100 puntos. No requiere **Gemini API**, **API Keys** ni consumo de **tokens**.
 
-  <h1>Built with AI Studio</h2>
+## Ejecutar localmente
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+**Prerrequisitos:** Node.js
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+1. Instalar dependencias:
+   `npm install`
+2. Iniciar la aplicación:
+   `npm run dev`
+3. Compilar para producción:
+   `npm run build`

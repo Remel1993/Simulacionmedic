@@ -1,0 +1,6 @@
+{
+  "name": "Medical Case Simulator - Simulador Clínico",
+  "description": "Simulador interactivo 100 % offline de casos clínicos y razonamiento diagnóstico para estudiantes y médicos con pacientes virtuales y evaluación de 100 puntos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

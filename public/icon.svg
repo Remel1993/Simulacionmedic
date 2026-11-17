@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A1D47"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="20" y="20" width="472" height="472" rx="96" fill="none" stroke="#1E3A8A" stroke-width="6"/>
+  <!-- Medical Cross Shield / Pulse -->
+  <path d="M222 108h68c11 0 20 9 20 20v74h74c11 0 20 9 20 20v68c0 11-9 20-20 20h-74v74c0 11-9 20-20 20h-68c-11 0-20-9-20-20v-74h-74c-11 0-20-9-20-20v-68c0-11 9-20 20-20h74v-74c0-11 9-20 20-20z" fill="#0F2859" stroke="#38BDF8" stroke-width="10"/>
+  <!-- ECG Pulse Line -->
+  <polyline points="96,256 176,256 208,196 244,322 278,170 314,292 338,256 416,256" fill="none" stroke="url(#accent)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="416" cy="256" r="12" fill="#38BDF8"/>
+</svg>
