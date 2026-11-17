@@ -109,6 +109,35 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
         <p className="text-xs sm:text-sm text-[#55685F] leading-relaxed">
           Los antecedentes se registran progresivamente conforme usted los interroga durante la entrevista clínica (enfermedades previas, hábitos y contactos, familia, cirugías, fármacos actuales y alergias).
         </p>
+        {(() => {
+          const weightKg = liveVitals?.weightKg ?? caseData.vitalSigns.weightKg;
+          const heightCm = liveVitals?.heightCm ?? caseData.vitalSigns.heightCm;
+          const bmi =
+            typeof weightKg === 'number' && typeof heightCm === 'number' && heightCm > 0
+              ? Number((weightKg / Math.pow(heightCm / 100, 2)).toFixed(1))
+              : null;
+          if (typeof weightKg !== 'number' && typeof heightCm !== 'number') return null;
+          return (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-xl bg-[#F8FBF9] border border-[#E2EAE4] px-3.5 py-2 text-xs text-[#55685F] tabular-nums">
+              <span className="font-bold text-[#1F4B3A]">Somatometría de ingreso:</span>
+              {typeof weightKg === 'number' && (
+                <span>
+                  Peso: <strong className="text-[#263A32]">{weightKg} kg</strong>
+                </span>
+              )}
+              {typeof heightCm === 'number' && (
+                <span>
+                  Talla: <strong className="text-[#263A32]">{heightCm} cm</strong> ({(heightCm / 100).toFixed(2)} m)
+                </span>
+              )}
+              {bmi !== null && (
+                <span>
+                  IMC: <strong className="text-[#263A32]">{bmi} kg/m²</strong>
+                </span>
+              )}
+            </div>
+          );
+        })()}
         {isUnconscious && !emergencyChartUnlocked && disclosedCount < 6 && onUnlockEmergencyChart && (
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-[#E2EAE4]">
             <span className="text-xs text-amber-900">
@@ -223,11 +252,6 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
                         </span>
                       </div>
                       <p className="text-[#263A32]">{st.physiologicalEffectSummary}</p>
-                      {st.deltas.length > 0 && (
-                        <div className="font-mono text-[11px] text-[#43866B]">
-                          Deltas: {st.deltas.map((d) => `${d.metric} ${d.before}→${d.after}`).join(' · ')}
-                        </div>
-                      )}
                     </div>
                   );
                 })}

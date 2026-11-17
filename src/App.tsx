@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Navbar,
-  MobileBottomNav,
   NavSectionKey,
 } from './components/Navbar';
 import { VitalSignsMonitor } from './components/VitalSignsMonitor';
@@ -27,7 +26,7 @@ import { TurnoMedicoView } from './components/TurnoMedicoView';
 import { applyStatIntervention, StatApplyInput } from './utils/statStabilization';
 import { generateContextualPatientReply, PatientChatPayload } from './engine/patientEngine';
 import { getLocalCaseLibrary, selectLocalClinicalCase, selectTurnoMedicoCases } from './engine/caseGenerator';
-import { evaluateClinicalEvolutionStep } from './engine/clinicalEvolution';
+import { evaluateClinicalEvolutionStep, sampleLiveMonitorTelemetry } from './engine/clinicalEvolution';
 import { buildLivePhysicalExams, buildLiveStudies } from './engine/liveClinicalSync';
 import {
   evaluateClinicalCaseLocally,
@@ -39,6 +38,7 @@ import { ALL_CURATED_CASES } from './data/allCases';
 import { enrichCaseWithHospitalCatalog } from './utils/studiesCatalog';
 import { enrichCaseWithUniversalPhysicalExam } from './utils/physicalExamCatalog';
 import { deriveDisclosedBackground } from './utils/backgroundDisclosure';
+import { detectPregnancyContext } from './utils/clinicalContext';
 import {
   clearActiveSimulationSession,
   clearAllHistoryRecords,
@@ -91,6 +91,8 @@ import {
   PenLine,
   RotateCcw,
   Check,
+  CheckCircle2,
+  Circle,
   ChevronsUpDown,
 } from 'lucide-react';
 
@@ -135,7 +137,6 @@ export default function App() {
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState('');
   const [differentialDiagnoses, setDifferentialDiagnoses] = useState<string[]>([]);
   const [clinicalJustification, setClinicalJustification] = useState('');
-  const [additionalStudiesNeeded, setAdditionalStudiesNeeded] = useState('');
 
   const [medications, setMedications] = useState<MedicationItem[]>([]);
   const [pendingMedDraft, setPendingMedDraft] = useState<MedicationItem | undefined>(undefined);
@@ -156,6 +157,9 @@ export default function App() {
     ttsEnabled: false,
     updatedAt: '',
   });
+  const [lobbyClassification, setLobbyClassification] = useState<GameMode | 'turno_medico'>(
+    'medico_general'
+  );
   const [isStorageHydrated, setIsStorageHydrated] = useState(false);
 
   // Modals & Dramatic Outcome Stage
@@ -185,12 +189,27 @@ export default function App() {
     [currentCase, liveVitalSigns, statInterventions, evolutionState]
   );
 
+  const unlockedStudyObjects = useMemo(
+    () => liveStudies.filter((s) => unlockedStudyIds.includes(s.id)),
+    [liveStudies, unlockedStudyIds]
+  );
+
+  const isPublicPregnant = useMemo(
+    () => detectPregnancyContext(currentCase, { publicOnly: true }).isViablePregnancy,
+    [currentCase]
+  );
+
   // Consultation Timer & Mode Mechanics
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const examAutoSubmittedRef = useRef(false);
+  const urgenciasAutoSubmittedRef = useRef(false);
   const latestFinishRef = useRef<() => void>(() => {});
+  const latestUrgenciasTimeoutRef = useRef<() => void>(() => {});
   const activeChatCaseIdRef = useRef<string>(ALL_CURATED_CASES[0].id);
   const lastEvolutionCheckRef = useRef<number>(0);
+  const clinicalAnchorVitalsRef = useRef<VitalSigns>(ALL_CURATED_CASES[0].vitalSigns);
+  const vitalsMonitorRef = useRef<HTMLDivElement | null>(null);
+  const [isMonitorOffscreen, setIsMonitorOffscreen] = useState(false);
 
   // Initialize IndexedDB (with one-time migration from legacy localStorage)
   useEffect(() => {
@@ -212,6 +231,7 @@ export default function App() {
 
         setHistory(loadedHistory);
         setUserPreferences(loadedPrefs);
+        setLobbyClassification(loadedPrefs.preferredMode);
         setCustomCases(loadedCustomCases);
 
         const mergedSeenIds = Array.from(
@@ -247,6 +267,7 @@ export default function App() {
           setCurrentCase(restoredCase);
           setActiveTab(activeSession.activeTab || 'anamnesis');
           setExpandedSections([activeSession.activeTab || 'anamnesis']);
+          clinicalAnchorVitalsRef.current = activeSession.liveVitalSigns || restoredCase.vitalSigns;
           setLiveVitalSigns(activeSession.liveVitalSigns || restoredCase.vitalSigns);
           setStatInterventions(activeSession.statInterventions || []);
           setMessages(activeSession.messages || []);
@@ -256,7 +277,6 @@ export default function App() {
           setPrimaryDiagnosis(activeSession.primaryDiagnosis || '');
           setDifferentialDiagnoses(activeSession.differentialDiagnoses || []);
           setClinicalJustification(activeSession.clinicalJustification || '');
-          setAdditionalStudiesNeeded(activeSession.additionalStudiesNeeded || '');
           setMedications(activeSession.medications || []);
           setGeneralMeasures(activeSession.generalMeasures || '');
           setHospitalizationDecision(activeSession.hospitalizationDecision || '');
@@ -292,40 +312,90 @@ export default function App() {
     };
   }, []);
 
-  // Timer Tick (only runs while attending an active unresolved case and patient is alive)
+  // Detect when VitalSignsMonitor scrolls offscreen so a compact sticky telemetry strip keeps live vitals visible while searching/typing
   useEffect(() => {
-    if (activeView !== 'simulation' || evaluationResult || isPatientDeceased) return;
-    const timer = setInterval(() => {
+    if (activeView !== 'simulation' || evaluationResult) {
+      setIsMonitorOffscreen(false);
+      return;
+    }
+    const target = vitalsMonitorRef.current;
+    if (!target || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) {
+          setIsMonitorOffscreen(!entry.isIntersecting && entry.boundingClientRect.bottom < 160);
+        }
+      },
+      { threshold: 0, rootMargin: '-80px 0px 0px 0px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [activeView, Boolean(evaluationResult), currentCase.id]);
+
+  // Timer Tick (runs continuously without pausing for searches, typing, tabs, or open modals)
+  const hasEvaluation = Boolean(evaluationResult);
+  useEffect(() => {
+    if (activeView !== 'simulation' || hasEvaluation || isPatientDeceased) return;
+    const timer = window.setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
-    return () => clearInterval(timer);
-  }, [activeView, evaluationResult, isPatientDeceased]);
+    return () => window.clearInterval(timer);
+  }, [activeView, hasEvaluation, isPatientDeceased, currentCase.id]);
 
-  // Continuous Deterministic Clinical Evolution (every 45s or upon STAT interventions)
+  // Continuous Real-Time Vitals Telemetry (every 1s) & Clinical Evolution (every 12-15s across all modes)
   useEffect(() => {
     if (activeView !== 'simulation' || evaluationResult) return;
 
-    const shouldEvaluateNow =
+    const evolutionStepSeconds =
+      currentCase.mode === 'urgencias' ||
+      /^nivel (i|ii)\b/i.test(currentCase.patientInfo.triageLevel)
+        ? 12
+        : 15;
+
+    const shouldEvaluateEvolution =
       elapsedSeconds === 0 ||
-      elapsedSeconds - lastEvolutionCheckRef.current >= 45;
+      !evolutionState ||
+      elapsedSeconds - lastEvolutionCheckRef.current >= evolutionStepSeconds;
 
-    if (!shouldEvaluateNow && evolutionState) return;
+    let currentTrajectory = evolutionState?.trajectory;
+    let evoChanged = false;
 
-    const step = evaluateClinicalEvolutionStep({
-      caseData: currentCase,
-      baselineVitals: currentCase.vitalSigns,
-      currentVitals: liveVitalSigns,
-      elapsedSeconds,
-      statInterventions,
-      unlockedExamCount: unlockedExamIds.length,
-      unlockedStudyCount: unlockedStudyIds.length,
-      lastEvaluatedSecond: lastEvolutionCheckRef.current,
-    });
+    if (shouldEvaluateEvolution) {
+      const step = evaluateClinicalEvolutionStep({
+        caseData: currentCase,
+        baselineVitals: currentCase.vitalSigns,
+        currentVitals: clinicalAnchorVitalsRef.current,
+        elapsedSeconds,
+        statInterventions,
+        unlockedExamCount: unlockedExamIds.length,
+        unlockedStudyCount: unlockedStudyIds.length,
+        lastEvaluatedSecond: lastEvolutionCheckRef.current,
+      });
 
-    lastEvolutionCheckRef.current = step.evolutionState.lastEvaluatedSecond;
-    setEvolutionState(step.evolutionState);
-    if (step.changed) {
-      setLiveVitalSigns(step.updatedVitals);
+      lastEvolutionCheckRef.current = step.evolutionState.lastEvaluatedSecond;
+      setEvolutionState(step.evolutionState);
+      currentTrajectory = step.evolutionState.trajectory;
+      if (step.changed) {
+        clinicalAnchorVitalsRef.current = step.updatedVitals;
+        evoChanged = true;
+      }
+    }
+
+    if (elapsedSeconds === 0) {
+      setLiveVitalSigns(clinicalAnchorVitalsRef.current);
+      return;
+    }
+
+    if (evoChanged || elapsedSeconds >= 1) {
+      const sampled = sampleLiveMonitorTelemetry({
+        anchorVitals: clinicalAnchorVitalsRef.current,
+        elapsedSeconds,
+        caseId: currentCase.id,
+        trajectory: currentTrajectory,
+        isDeceased: isPatientDeceased,
+      });
+      setLiveVitalSigns(sampled);
     }
   }, [
     elapsedSeconds,
@@ -335,6 +405,7 @@ export default function App() {
     statInterventions,
     unlockedExamIds.length,
     unlockedStudyIds.length,
+    isPatientDeceased,
   ]);
 
   // Persist Active Simulation Session in IndexedDB (offline crash/reload recovery)
@@ -354,7 +425,7 @@ export default function App() {
         primaryDiagnosis,
         differentialDiagnoses,
         clinicalJustification,
-        additionalStudiesNeeded,
+        additionalStudiesNeeded: '',
         medications,
         generalMeasures,
         hospitalizationDecision,
@@ -380,7 +451,6 @@ export default function App() {
     primaryDiagnosis,
     differentialDiagnoses,
     clinicalJustification,
-    additionalStudiesNeeded,
     medications,
     generalMeasures,
     hospitalizationDecision,
@@ -444,6 +514,7 @@ export default function App() {
     setActiveView('simulation');
     setActiveTab('anamnesis');
     setExpandedSections(['anamnesis']);
+    clinicalAnchorVitalsRef.current = enriched.vitalSigns;
     setLiveVitalSigns(enriched.vitalSigns);
     setStatInterventions([]);
     setStatDrawerOpen(false);
@@ -453,7 +524,6 @@ export default function App() {
     setPrimaryDiagnosis('');
     setDifferentialDiagnoses([]);
     setClinicalJustification('');
-    setAdditionalStudiesNeeded('');
     setMedications([]);
     setPendingMedDraft(undefined);
     setGeneralMeasures('');
@@ -465,6 +535,7 @@ export default function App() {
     setImmediateDeathAlert(null);
     setElapsedSeconds(0);
     examAutoSubmittedRef.current = false;
+    urgenciasAutoSubmittedRef.current = false;
 
     const initialEvo = evaluateClinicalEvolutionStep({
       caseData: enriched,
@@ -619,7 +690,7 @@ export default function App() {
     if (isPatientDeceased) return;
 
     const outcome = applyStatIntervention(
-      liveVitalSigns,
+      clinicalAnchorVitalsRef.current,
       currentCase.vitalSigns,
       currentCase,
       input,
@@ -628,6 +699,7 @@ export default function App() {
     );
 
     const nextStatList = [...statInterventions, outcome.record];
+    clinicalAnchorVitalsRef.current = outcome.updatedVitals;
     setLiveVitalSigns(outcome.updatedVitals);
     setStatInterventions(nextStatList);
 
@@ -646,23 +718,29 @@ export default function App() {
 
     setMedications((prev) => {
       const normalizedNew = `${outcome.medicationItem.drug.toLowerCase()}::${outcome.medicationItem.dose.toLowerCase()}::${outcome.medicationItem.route.toLowerCase()}`;
-      const alreadyExists = prev.some(
+      const matchIdx = prev.findIndex(
         (m) => `${m.drug.toLowerCase()}::${m.dose.toLowerCase()}::${m.route.toLowerCase()}` === normalizedNew
       );
-      return alreadyExists ? prev : [...prev, outcome.medicationItem];
+      if (matchIdx === -1) {
+        return [...prev, outcome.medicationItem];
+      }
+      return prev.map((m, idx) => {
+        if (idx !== matchIdx) return m;
+        const countMatch = (m.frequency || '').match(/×\s*(\d+)/);
+        const nextCount = countMatch ? parseInt(countMatch[1], 10) + 1 : 2;
+        return {
+          ...m,
+          frequency: `Aplicado STAT × ${nextCount}`,
+        };
+      });
     });
-
-    const deltasText =
-      outcome.record.deltas.length > 0
-        ? ` · Cambios: ${outcome.record.deltas.map((d) => `${d.metric} ${d.before} → ${d.after}`).join(', ')}`
-        : ' · Signos vitales sin cambios inmediatos';
 
     const nowTs = outcome.record.appliedAt;
     const baseTime = Date.now();
     const sysMsg: ChatMessage = {
       id: `msg-stat-sys-${baseTime}`,
       sender: 'system',
-      text: `${outcome.record.drug} (${outcome.record.dose}, ${outcome.record.route})${deltasText}.`,
+      text: `${outcome.record.drug} (${outcome.record.dose}, ${outcome.record.route}) aplicada.`,
       timestamp: nowTs,
     };
     const patientReactionMsg: ChatMessage = {
@@ -691,7 +769,7 @@ export default function App() {
     const step = evaluateClinicalEvolutionStep({
       caseData: currentCase,
       baselineVitals: currentCase.vitalSigns,
-      currentVitals: liveVitalSigns,
+      currentVitals: clinicalAnchorVitalsRef.current,
       elapsedSeconds,
       statInterventions,
       unlockedExamCount: unlockedExamIds.length,
@@ -702,8 +780,17 @@ export default function App() {
     lastEvolutionCheckRef.current = step.evolutionState.lastEvaluatedSecond;
     setEvolutionState(step.evolutionState);
     if (step.changed) {
-      setLiveVitalSigns(step.updatedVitals);
+      clinicalAnchorVitalsRef.current = step.updatedVitals;
     }
+    setLiveVitalSigns(
+      sampleLiveMonitorTelemetry({
+        anchorVitals: clinicalAnchorVitalsRef.current,
+        elapsedSeconds: elapsedSeconds + 3,
+        caseId: currentCase.id,
+        trajectory: step.evolutionState.trajectory,
+        isDeceased: false,
+      })
+    );
   };
 
   // Unlock physical exam finding
@@ -754,6 +841,38 @@ export default function App() {
     }
   };
 
+  const handleStartNextUnseen = async (mode: GameMode, specialty: Specialty) => {
+    setIsGeneratingCase(true);
+    try {
+      handleUpdatePreferences({ preferredMode: mode, preferredSpecialty: specialty });
+
+      const selectedCase = selectLocalClinicalCase({
+        mode,
+        specialty,
+        completedCaseIds,
+        preferUnseen: true,
+        excludeCaseIds: recentCaseIds,
+        excludeDiagnoses: recentDiagnoses,
+        customCases,
+      });
+
+      setupCase(selectedCase);
+      setNewCaseModalOpen(false);
+    } finally {
+      setIsGeneratingCase(false);
+    }
+  };
+
+  const handleRetryCaseById = async (caseId: string, mode?: GameMode) => {
+    const library = getLocalCaseLibrary(customCases);
+    const matched = library.find((c) => c.id === caseId);
+    await handleSelectCase(
+      mode || matched?.mode || userPreferences.preferredMode,
+      matched?.specialty || userPreferences.preferredSpecialty,
+      caseId
+    );
+  };
+
   // Save & Delete Custom Cases in IndexedDB
   const handleSaveCustomCase = async (newCase: ClinicalCase) => {
     await saveCustomCase(newCase);
@@ -776,8 +895,8 @@ export default function App() {
       const submission: UserEvaluationInput = {
         primaryDiagnosis,
         differentialDiagnoses: isEcoeMode ? differentialDiagnoses : [],
-        clinicalJustification,
-        additionalStudiesNeeded,
+        clinicalJustification: isEcoeMode ? clinicalJustification : '',
+        additionalStudiesNeeded: '',
         pharmacologicalPlan: effectiveMedications,
         generalMeasures,
         hospitalizationDecision,
@@ -850,11 +969,47 @@ export default function App() {
     );
   };
 
+  const closeSectionAndKeepPlace = (
+    sectionId:
+      | 'anamnesis'
+      | 'background'
+      | 'physical_exam'
+      | 'studies'
+      | 'diagnosis'
+      | 'treatment'
+      | 'audit'
+  ) => {
+    const elBefore = document.getElementById(`expediente-${sectionId}`);
+    const rectBefore = elBefore?.getBoundingClientRect();
+
+    setExpandedSections((prev) => prev.filter((id) => id !== sectionId));
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const elAfter = document.getElementById(`expediente-${sectionId}`);
+        if (!elAfter) return;
+        const rectAfter = elAfter.getBoundingClientRect();
+        const headerBottom =
+          document.querySelector('header')?.getBoundingClientRect().bottom ?? 120;
+        const minVisibleTop = headerBottom + 8;
+
+        if (!rectBefore || rectBefore.top < minVisibleTop || rectAfter.top < minVisibleTop) {
+          elAfter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return;
+        }
+
+        const delta = rectAfter.top - rectBefore.top;
+        if (Math.abs(delta) > 2) {
+          window.scrollBy({ top: delta, behavior: 'auto' });
+        }
+      });
+    });
+  };
+
   const handleClearDecisionDraft = () => {
     setPrimaryDiagnosis('');
     setDifferentialDiagnoses([]);
     setClinicalJustification('');
-    setAdditionalStudiesNeeded('');
     setMedications([]);
     setPendingMedDraft(undefined);
     setGeneralMeasures('');
@@ -869,9 +1024,22 @@ export default function App() {
     focusSection('audit');
   };
 
-  // Keep latest finish handler for timed Exam auto-submit
+  // Keep latest finish handlers for timed Exam & abrupt Urgencias auto-submit
   latestFinishRef.current = () => {
     void handleFinishCase();
+  };
+
+  latestUrgenciasTimeoutRef.current = () => {
+    void (async () => {
+      setStatDrawerOpen(false);
+      setNewCaseModalOpen(false);
+      setHistoryModalOpen(false);
+      setGuideModalOpen(false);
+      setCalculatorsModalOpen(false);
+      setImmediateDeathAlert(null);
+      await executeFinishCase(pendingMedDraft, true);
+      focusSection('audit');
+    })();
   };
 
   useEffect(() => {
@@ -885,6 +1053,20 @@ export default function App() {
     ) {
       examAutoSubmittedRef.current = true;
       latestFinishRef.current();
+    }
+  }, [elapsedSeconds, activeView, evaluationResult, isEvaluating, currentCase.mode]);
+
+  useEffect(() => {
+    if (
+      activeView === 'simulation' &&
+      !evaluationResult &&
+      !isEvaluating &&
+      currentCase.mode === 'urgencias' &&
+      elapsedSeconds >= URGENCIAS_WINDOW_SECONDS &&
+      !urgenciasAutoSubmittedRef.current
+    ) {
+      urgenciasAutoSubmittedRef.current = true;
+      latestUrgenciasTimeoutRef.current();
     }
   }, [elapsedSeconds, activeView, evaluationResult, isEvaluating, currentCase.mode]);
 
@@ -939,9 +1121,20 @@ export default function App() {
           ? 'calculators'
           : 'home';
 
-  const handleHeaderModeChange = (mode: GameMode) => {
+  const handleHeaderModeChange = (mode: GameMode | 'turno_medico') => {
+    setLobbyClassification(mode);
+    if (mode === 'turno_medico') {
+      if (activeView === 'simulation') {
+        handleStartTurnoMedico({
+          ...turnoConfig,
+          specialty: userPreferences.preferredSpecialty,
+        });
+      }
+      return;
+    }
+
     handleUpdatePreferences({ preferredMode: mode });
-    if (activeView === 'simulation' && mode !== currentCase.mode) {
+    if ((activeView === 'simulation' && mode !== currentCase.mode) || activeView === 'turno_medico') {
       void handleSelectCase(mode, userPreferences.preferredSpecialty);
     }
   };
@@ -997,8 +1190,10 @@ export default function App() {
     },
     {
       id: 'diagnosis',
-      title: 'Diagnóstico Diferencial',
-      subtitle: 'Impresión clínica y razonamiento',
+      title: isExamenMode ? 'Diagnóstico Diferencial' : 'Diagnóstico Clínico',
+      subtitle: isExamenMode
+        ? 'Diagnóstico principal, diferenciales y justificación'
+        : 'Impresión diagnóstica principal',
       badge: primaryDiagnosis.trim() ? 'Definido' : undefined,
       icon: Brain,
     },
@@ -1027,8 +1222,16 @@ export default function App() {
     setNewCaseModalOpen(true);
   };
 
+  const isTurnoDark = activeView === 'turno_medico';
+
   return (
-    <div className="min-h-screen w-full overflow-x-clip bg-[#F3F7F4] text-[#263A32] flex flex-col font-sans selection:bg-[#43866B] selection:text-white">
+    <div
+      className={`min-h-screen w-full overflow-x-clip flex flex-col font-sans selection:text-white transition-colors duration-200 ${
+        isTurnoDark
+          ? 'bg-[#0B1411] text-[#E8F2ED] selection:bg-[#3A846B]'
+          : 'bg-[#F3F7F4] text-[#263A32] selection:bg-[#43866B]'
+      }`}
+    >
       {/* Top Hospital Emerald Header + Unified Horizontal Main Nav */}
       <Navbar
         activeView={activeView}
@@ -1040,7 +1243,13 @@ export default function App() {
         onOpenCalculatorsModal={() => setCalculatorsModalOpen(true)}
         onRestartCase={() => setupCase(currentCase)}
         onSelectMode={handleHeaderModeChange}
-        currentMode={activeView === 'simulation' ? currentCase.mode : userPreferences.preferredMode}
+        currentMode={
+          activeView === 'turno_medico'
+            ? 'turno_medico'
+            : activeView === 'simulation'
+              ? currentCase.mode
+              : lobbyClassification
+        }
         currentSpecialty={currentCase.specialty}
         historyCount={history.length}
       />
@@ -1057,7 +1266,7 @@ export default function App() {
           />
         </div>
       ) : (
-        <div className="flex-1 max-w-5xl w-full min-w-0 mx-auto px-3 sm:px-5 pt-4 sm:pt-6 pb-24 md:pb-10">
+        <div className="flex-1 max-w-5xl w-full min-w-0 mx-auto px-3 sm:px-5 pt-4 sm:pt-6 pb-8 md:pb-10">
           <main className="w-full min-w-0 space-y-4">
             {activeView === 'lobby' ? (
               <HomeDashboard
@@ -1067,9 +1276,15 @@ export default function App() {
                 totalCasesCount={totalLibraryCount}
                 initialMode={userPreferences.preferredMode}
                 initialSpecialty={userPreferences.preferredSpecialty}
+                externalClassification={lobbyClassification}
+                onClassificationChange={setLobbyClassification}
                 onPreferencesChange={(mode, specialty) =>
                   handleUpdatePreferences({ preferredMode: mode, preferredSpecialty: specialty })
                 }
+                completedCaseIds={completedCaseIds}
+                history={history}
+                onStartNextUnseen={handleStartNextUnseen}
+                onRetryCase={handleRetryCaseById}
               />
             ) : (
               <>
@@ -1082,18 +1297,62 @@ export default function App() {
                   disclosedBackground={disclosedBg}
                 />
 
+                {/* Sticky Compact Telemetry Strip when scrolled into Expediente (searching/typing) */}
+                {isMonitorOffscreen && !evaluationResult && (
+                  <div
+                    aria-label="Monitor compacto en vivo"
+                    className={`sticky top-[104px] md:top-[116px] z-30 rounded-xl border px-3 py-1.5 shadow-md backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums ${
+                      evolutionState?.trajectory === 'critico' || isPatientDeceased
+                        ? 'bg-rose-50/95 border-rose-300 text-rose-950'
+                        : 'bg-[#F3FBF6]/95 border-[#B8D7C4] text-[#1F4B3A]'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="inline-flex items-center gap-1 font-sans font-bold">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                            evolutionState?.trajectory === 'critico' || isPatientDeceased
+                              ? 'bg-rose-600'
+                              : 'bg-emerald-600'
+                          }`}
+                        />
+                        <span>En vivo</span>
+                      </span>
+                      <span>TA {liveVitalSigns.bloodPressure.split(' ')[0]}</span>
+                      <span>FC {liveVitalSigns.heartRate}</span>
+                      <span>FR {liveVitalSigns.respiratoryRate}</span>
+                      <span>SpO₂ {liveVitalSigns.oxygenSaturation}%</span>
+                      <span>T° {liveVitalSigns.temperature.toFixed(1)}°</span>
+                      <span>GCS {liveVitalSigns.glasgow}/15</span>
+                      {typeof liveVitalSigns.bloodGlucose === 'number' && (
+                        <span>Gluc {liveVitalSigns.bloodGlucose}</span>
+                      )}
+                    </div>
+                    {isUrgenciasMode && (
+                      <span className="font-bold text-amber-800">
+                        Ventana {formatTimer(urgenciasRemaining)}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Vital Signs Card */}
-                <VitalSignsMonitor
-                  vitals={liveVitalSigns}
-                  baselineVitals={currentCase.vitalSigns}
-                  statCount={statInterventions.length}
-                  triageLevel={currentCase.patientInfo.triageLevel}
-                  onOpenStat={() => setStatDrawerOpen(true)}
-                  onRefreshVitals={!evaluationResult ? handleRefreshVitals : undefined}
-                  showStatButton={!evaluationResult}
-                  evolutionState={evolutionState}
-                  isDeceased={isPatientDeceased}
-                />
+                <div ref={vitalsMonitorRef}>
+                  <VitalSignsMonitor
+                    vitals={liveVitalSigns}
+                    baselineVitals={currentCase.vitalSigns}
+                    statCount={statInterventions.length}
+                    triageLevel={currentCase.patientInfo.triageLevel}
+                    onOpenStat={() => setStatDrawerOpen(true)}
+                    onRefreshVitals={!evaluationResult ? handleRefreshVitals : undefined}
+                    showStatButton={!evaluationResult}
+                    evolutionState={evolutionState}
+                    isDeceased={isPatientDeceased}
+                    patientAge={currentCase.patientInfo.age}
+                    isPregnant={isPublicPregnant}
+                    unlockedStudies={unlockedStudyObjects}
+                  />
+                </div>
 
                 {/* Compact Expediente Controls + Timer Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2.5 bg-white border border-[#E2EAE4] rounded-2xl px-3.5 sm:px-5 py-2.5 shadow-[0_1px_3px_rgba(38,58,50,0.04)]">
@@ -1174,11 +1433,11 @@ export default function App() {
                 )}
 
                 {/* Mode-Specific Notices */}
-                {!evaluationResult && isUrgenciasMode && urgenciasRemaining === 0 && (
+                {!evaluationResult && isUrgenciasMode && urgenciasRemaining <= 60 && urgenciasRemaining > 0 && (
                   <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-xs text-rose-900 flex items-center gap-2.5 shadow-sm">
                     <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                     <span>
-                      Ventana de oro (8 min) superada: defina inmediatamente su diagnóstico y conducta terapéutica antes de enviar su respuesta.
+                      Último minuto de ventana crítica (8 min): al agotarse el tiempo, la consulta finalizará automáticamente y pasará directo a Auditoría Clínica.
                     </span>
                   </div>
                 )}
@@ -1201,7 +1460,7 @@ export default function App() {
                 )}
 
                 {/* Collapsible Clinical Expediente Accordion Cards matching mockup */}
-                <div className="space-y-3">
+                <div className="space-y-3 no-scroll-anchor">
                   {expedienteSections.map((section, idx) => {
                     const Icon = section.icon;
                     const isOpen = expandedSections.includes(section.id);
@@ -1212,7 +1471,7 @@ export default function App() {
                       <div
                         key={section.id}
                         id={`expediente-${section.id}`}
-                        className="rounded-2xl border border-[#E2EAE4] bg-white shadow-[0_2px_8px_rgba(38,58,50,0.04)] overflow-hidden scroll-mt-24"
+                        className="rounded-2xl border border-[#E2EAE4] bg-white shadow-[0_2px_8px_rgba(38,58,50,0.04)] overflow-hidden scroll-mt-[146px] md:scroll-mt-[124px]"
                       >
                         <button
                           type="button"
@@ -1324,8 +1583,6 @@ export default function App() {
                                   setDifferentialDiagnoses={setDifferentialDiagnoses}
                                   clinicalJustification={clinicalJustification}
                                   setClinicalJustification={setClinicalJustification}
-                                  additionalStudiesNeeded={additionalStudiesNeeded}
-                                  setAdditionalStudiesNeeded={setAdditionalStudiesNeeded}
                                   isEcoeMode={isExamenMode}
                                 />
                               )}
@@ -1345,6 +1602,7 @@ export default function App() {
                                   setFollowUpPlan={setFollowUpPlan}
                                   onPendingDraftChange={setPendingMedDraft}
                                   isEcoeMode={isExamenMode}
+                                  gameMode={currentCase.mode}
                                 />
                               )}
 
@@ -1361,11 +1619,7 @@ export default function App() {
                             <div className="border-t border-[#E2EAE4] bg-[#EFF6F1] px-3.5 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setExpandedSections((prev) =>
-                                    prev.filter((id) => id !== section.id)
-                                  );
-                                }}
+                                onClick={() => closeSectionAndKeepPlace(section.id)}
                                 className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-white hover:bg-[#E4F1E8] border border-[#72A98A]/65 text-xs font-bold text-[#1F4B3A] flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                               >
                                 <ChevronUp className="w-4 h-4 shrink-0" />
@@ -1454,31 +1708,82 @@ export default function App() {
                         className="w-full min-h-[44px] bg-[#F8FBF9] border border-[#E2EAE4] focus:border-[#43866B] focus:bg-white rounded-xl px-4 py-2.5 text-sm text-[#263A32] placeholder-[#718078] focus:outline-none transition-colors"
                       />
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#55685F] bg-[#F3F7F4] border border-[#E2EAE4] rounded-xl px-3.5 py-2">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span>
-                            Fármacos prescritos:{' '}
-                            <strong className="text-[#263A32] tabular-nums">
-                              {medications.length}
-                            </strong>
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            Destino:{' '}
-                            <strong className="text-[#263A32]">
-                              {hospitalizationDecision || 'Por definir'}
-                            </strong>
+                      {/* Checklist de Completitud del Expediente */}
+                      <div className="rounded-xl border border-[#E2EAE4] bg-[#F8FBF9] p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-[#43866B] uppercase tracking-wider">
+                          <span>Completitud del Expediente</span>
+                          <span className="text-[#55685F] font-normal normal-case">
+                            Pulsa cualquier rubro para ir directo
                           </span>
                         </div>
-                        {!expandedSections.includes('treatment') && (
-                          <button
-                            type="button"
-                            onClick={() => focusSection('treatment')}
-                            className="text-xs font-bold text-[#2F7A63] hover:text-[#174E3E] underline-offset-2 hover:underline cursor-pointer"
-                          >
-                            Completar en Tratamiento
-                          </button>
-                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
+                          {[
+                            {
+                              id: 'anamnesis' as const,
+                              label: 'Anamnesis',
+                              done: messages.filter((m) => m.sender === 'doctor').length > 0,
+                              detail: `${messages.filter((m) => m.sender === 'doctor').length} preg.`,
+                            },
+                            {
+                              id: 'physical_exam' as const,
+                              label: 'Exploración',
+                              done: unlockedExamIds.length > 0,
+                              detail: `${unlockedExamIds.length}/${livePhysicalExams.length}`,
+                            },
+                            {
+                              id: 'studies' as const,
+                              label: 'Estudios',
+                              done: unlockedStudyIds.length > 0,
+                              detail: `${unlockedStudyIds.length}/${liveStudies.length}`,
+                            },
+                            {
+                              id: 'diagnosis' as const,
+                              label: 'Diagnóstico',
+                              done: Boolean(primaryDiagnosis.trim()),
+                              detail: primaryDiagnosis.trim() ? 'Listo' : 'Pendiente',
+                            },
+                            {
+                              id: 'treatment' as const,
+                              label: 'Tratamiento',
+                              done: medications.length > 0 || Boolean(generalMeasures.trim()),
+                              detail:
+                                medications.length > 0
+                                  ? `${medications.length} fárm.`
+                                  : generalMeasures.trim()
+                                    ? 'Medidas'
+                                    : 'Pendiente',
+                            },
+                            {
+                              id: 'treatment' as const,
+                              label: 'Destino',
+                              done: Boolean(hospitalizationDecision.trim()),
+                              detail: hospitalizationDecision || 'Por definir',
+                            },
+                          ].map((item, idx) => (
+                            <button
+                              key={`${item.id}-${idx}`}
+                              type="button"
+                              onClick={() => focusSection(item.id)}
+                              className={`min-h-[40px] px-2.5 py-1.5 rounded-lg border text-left transition-colors cursor-pointer flex items-center gap-1.5 ${
+                                item.done
+                                  ? 'bg-white border-[#CFE4D6] hover:border-[#43866B] text-[#1F4B3A]'
+                                  : 'bg-[#F3F7F4] border-[#E2EAE4] hover:border-[#72A98A] text-[#55685F]'
+                              }`}
+                            >
+                              {item.done ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[#2F7A63] shrink-0" />
+                              ) : (
+                                <Circle className="w-3.5 h-3.5 text-[#718078] shrink-0" />
+                              )}
+                              <div className="min-w-0 leading-tight">
+                                <div className="text-[11px] font-bold truncate">{item.label}</div>
+                                <div className="text-[10px] opacity-80 truncate tabular-nums">
+                                  {item.detail}
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
@@ -1513,19 +1818,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Mobile Fixed Bottom Navigation Bar */}
-      {activeView !== 'turno_medico' && (
-        <MobileBottomNav
-          activeSection={activeNavSection}
-          historyCount={history.length}
-          onGoHome={() => setActiveView('lobby')}
-          onOpenCases={handleOpenCasesLibrary}
-          onOpenHistory={() => setHistoryModalOpen(true)}
-          onOpenGuides={() => setGuideModalOpen(true)}
-          onOpenCalculators={() => setCalculatorsModalOpen(true)}
-        />
-      )}
-
       {/* Offline Status Banner */}
       <OfflineIndicator />
 
@@ -1553,6 +1845,8 @@ export default function App() {
         onSaveCustomCase={handleSaveCustomCase}
         onDeleteCustomCase={handleDeleteCustomCase}
         initialTab={newCaseModalTab}
+        completedCaseIds={completedCaseIds}
+        history={history}
       />
 
       <CaseHistoryModal
@@ -1564,6 +1858,10 @@ export default function App() {
           void clearAllHistoryRecords();
         }}
         onReviewCase={handleReviewPastCase}
+        onRetryCase={(rec) => {
+          void handleSelectCase(rec.mode, rec.specialty, rec.caseId);
+        }}
+        customCases={customCases}
       />
 
       <ClinicalGuideModal

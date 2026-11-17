@@ -457,7 +457,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Rinitis alérgica estacional desde la infancia y dermatitis atópica leve en pliegues cuando era niña.'],
       nonPathological: ['No fuma; convive en casa con un gato desde hace 8 meses.'],
-      family: ['Madre asmática y hermano con rinitis alérgica.'],
+      family: ['Padre con hipertensión arterial controlada.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Loratadina ocasional para estornudos. Ningún inhalador prescrito previamente.'],
       allergies: ['Alergia ambiental al polvo y caspa de gato.'],
@@ -589,7 +589,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Niega enfermedades crónicas diagnosticadas previamente.'],
       nonPathological: ['No fuma, no bebe alcohol. Trabajo de oficina sedentario.'],
-      family: ['Hermana mayor con enfermedad tiroidea en tratamiento con pastilla diaria.'],
+      family: ['Sin antecedentes heredofamiliares relevantes referidos.'],
       surgical: ['Cesárea hace 8 años sin complicaciones.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias conocidas.'],
@@ -727,7 +727,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Dislipidemia leve hace 2 años sin tratamiento farmacológico actual.'],
       nonPathological: ['Dieta alta en sal y carnes rojas, sedentario. Fuma 5 cigarros al día desde hace 15 años.'],
-      family: ['Madre hipertensa desde los 50 años y padre con diabetes tipo 2.'],
+      family: ['Sin antecedentes familiares relevantes conocidos.'],
       surgical: ['Colecistectomía laparoscópica hace 6 años.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -858,7 +858,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Episodios similares de cefalea unilateral 1 a 2 veces al mes desde los 26 años, relacionados con estrés, desvelo o menstruación.'],
       nonPathological: ['No fuma; toma 2 tazas de café al día.'],
-      family: ['Madre con antecedentes de jaquecas/migraña desde joven.'],
+      family: ['Madre hipertensa controlada; padre sano.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Tomó 1 tableta de paracetamol 500 mg hace 3 horas sin mejoría.'],
       allergies: ['Sin alergias conocidas.'],
@@ -988,7 +988,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Tuvo varicela en la infancia. Hipotiroidismo leve bien controlado.'],
       nonPathological: ['No fuma ni toma alcohol. Refiere mucho estrés familiar reciente.'],
-      family: ['Sin antecedentes dermatológicos relevantes.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Apendicectomía hace 30 años.'],
       currentMedications: ['Levotiroxina 50 mcg cada mañana. Aplicó crema hidratante común sin mejoría.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1487,7 +1487,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sangrado menstrual abundante (hipermenorrea) desde hace 1 año sin estudio ginecológico previo.'],
       nonPathological: ['Dieta omnívora aunque con bajo consumo de carne roja. No fuma.'],
-      family: ['Madre con miomatosis uterina operada a los 42 años.'],
+      family: ['Padres aparentemente sanos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1620,7 +1620,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Obesidad grado I (IMC 31.8 kg/m²). Glucosa "en el límite" hace 3 años sin seguimiento.'],
       nonPathological: ['Sedentario, consumo diario de bebidas azucaradas y pan dulce.'],
-      family: ['Madre y dos hermanos mayores con diabetes mellitus tipo 2.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1750,7 +1750,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sin enfermedades crónicas ni trastornos médicos previos.'],
       nonPathological: ['Toma 2 tazas de café al día; no fuma ni consume sustancias ilícitas. Duerme menos de 5 horas por noche.'],
-      family: ['Madre con trastorno de ansiedad tratado hace años.'],
+      family: ['Padre con hipertensión arterial en control.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Toma tés relajantes por las noches sin mejoría.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1882,7 +1882,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Tos crónica leve matutina de fumador y estreñimiento ocasional.'],
       nonPathological: ['Levanta cargas de 25-35 kg en su trabajo; fuma 8 cigarros diarios.'],
-      family: ['Padre operado de hernia inguinal a los 60 años.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2116,7 +2116,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sin enfermedades crónicas ni infecciones intestinales graves recientes.'],
       nonPathological: ['Alto estrés laboral y comidas irregulares con lácteos y harinas refinadas. No fuma.'],
-      family: ['Sin antecedentes de enfermedad inflamatoria intestinal, enfermedad celíaca ni cáncer colorrectal.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Butilhioscina ocasional cuando tiene cólico fuerte.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2229,7 +2229,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipertensión arterial sistémica desde hace 12 años en control con losartán.'],
       nonPathological: ['Exfumador desde hace 10 años, toma 1 taza de café al día.'],
-      family: ['Padre con hipertensión arterial.'],
+      family: ['Padres aparentemente sanos.'],
       surgical: ['Hernioplastia umbilical hace 15 años.'],
       currentMedications: ['Losartán 50 mg cada 24 horas.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2367,7 +2367,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Tuvo un cuadro gripal leve hace 10 días. Sin hipertensión ni diabetes.'],
       nonPathological: ['No fuma, alcohol ocasional.'],
-      family: ['Sin antecedentes neurológicos.'],
+      family: ['Sin antecedentes familiares relevantes.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2847,7 +2847,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Menarca a los 12 años; ciclos inicialmente normales hasta hace 2-3 años.'],
       nonPathological: ['No fuma; vida sexual activa usando preservativo.'],
-      family: ['Padre con diabetes tipo 2; hermana con ciclos irregulares.'],
+      family: ['Sin antecedentes heredofamiliares relevantes referidos.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2975,7 +2975,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipotiroidismo leve diagnosticado hace 3 años en control con levotiroxina.'],
       nonPathological: ['Trabaja 8 horas diarias en teclado y máquina de coser realizando movimientos repetitivos de muñeca.'],
-      family: ['Sin antecedentes neurológicos hereditarios.'],
+      family: ['Madre con hipertensión arterial controlada.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Levotiroxina 50 mcg cada mañana.'],
       allergies: ['Sin alergias conocidas.'],
@@ -3100,7 +3100,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Gastritis crónica tratada con IBP continuo por 6 años; vitíligo leve en dorso de manos.'],
       nonPathological: ['Dieta vegana/vegetariana estricta desde hace 4 años sin suplementación vitamínica. No fuma.'],
-      family: ['Hermana con enfermedad tiroidea autoinmune.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Niega cirugías gástricas.'],
       currentMedications: ['Omeprazol 20 mg diarios desde hace 6 años.'],
       allergies: ['Sin alergias conocidas.'],
@@ -3364,7 +3364,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Menopausia a los 50 años. Sin enfermedades autoinmunes ni renales conocidas.'],
       nonPathological: ['Exposición solar casi nula por turno nocturno y uso habitual de protector solar/ropa cerrada; baja ingesta de lácteos y pescado.'],
-      family: ['Madre con osteoporosis.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías tiroideas ni bariátricas.'],
       currentMedications: ['Tomó paracetamol ocasional con poco alivio del dolor óseo.'],
       allergies: ['Sin alergias conocidas.'],
@@ -3507,7 +3507,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sin enfermedades crónicas previas.'],
       nonPathological: ['Dejó de fumar hace 8 meses; no consume alcohol habitualmente.'],
-      family: ['Primo hermano con enfermedad inflamatoria intestinal.'],
+      family: ['Padres aparentemente sanos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomó metronidazol por 5 días hace 3 semanas sin respuesta.'],
       allergies: ['Sin alergias conocidas.'],
@@ -3758,7 +3758,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Convulsión febril prolongada a los 3 años de edad según refiere su mamá. Niega hipertensión, diabetes o traumatismos craneales recientes.'],
       nonPathological: ['Desvelos frecuentes por entregas de diseño; no fuma ni consume drogas; toma una copa de vino ocasional cada 2 meses.'],
-      family: ['Prima materna con crisis convulsivas en la juventud.'],
+      family: ['Sin antecedentes familiares relevantes conocidos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ningún medicamento habitual; anticonceptivos orales combinados.'],
       allergies: ['Sin alergias conocidas.'],
@@ -3893,7 +3893,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Tabaquismo intenso crónico (38 paquetes-año). Dislipidemia leve controlada con dieta.'],
       nonPathological: ['Exfumador parcial (aún fuma 5 cigarros al día). Sin exposición a biomasa ni asbesto.'],
-      family: ['Padre fallecido a los 78 años por cardiopatía.'],
+      family: ['Madre con artrosis leve; padre fallecido en edad avanzada.'],
       surgical: ['Hernioplastia umbilical hace 12 años.'],
       currentMedications: ['Salbutamol inhalado ocasional que le prestó un familiar.'],
       allergies: ['Sin alergias conocidas.'],

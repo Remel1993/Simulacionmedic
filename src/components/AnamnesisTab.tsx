@@ -227,7 +227,7 @@ export const AnamnesisTab: React.FC<AnamnesisTabProps> = ({
               )}
 
               <div
-                className={`max-w-[84%] sm:max-w-xl rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm leading-relaxed break-words ${
+                className={`min-w-0 max-w-[84%] sm:max-w-xl rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm leading-relaxed break-words ${
                   isDoctor
                     ? 'bg-[#43866B] text-white rounded-tr-sm shadow-xs'
                     : 'bg-white border border-[#E2EAE4] text-[#263A32] rounded-tl-sm shadow-[0_1px_2px_rgba(38,58,50,0.03)]'

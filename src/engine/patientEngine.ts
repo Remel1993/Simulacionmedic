@@ -2091,12 +2091,6 @@ function generateContextualPatientReplyInternal(payload: PatientChatPayload): st
 
   // 15. Antecedentes familiares y personas enfermas cercanas
   if (hasWordPrefix(norm, ['familia', 'mama', 'madre', 'papa', 'padre', 'hermano', 'hermana', 'abuel', 'pariente', 'hereditari'])) {
-    if (caseId === 'case-iamcest-anterior') {
-      return wrapConfirm('Mi papá murió joven, a los 54 años, de un infarto al corazón, y mi hermano mayor también sufre de dolor de pecho por el corazón.');
-    }
-    if (caseId === 'case-dengue-alarm') {
-      return wrapConfirm('Mi papá tiene presión alta controlada y mi mamá es sana. Además, en mi casa mi hermano también empezó ayer con fiebre y dolor de cuerpo.');
-    }
     const fam = background?.family;
     if (fam && !listIndicatesNone(fam)) {
       const famList = formatConversationalList(fam, patientInfo).replace(/\bcon\s+antecedente\s+de\b/gi, 'que tuvo');
@@ -2118,7 +2112,7 @@ function generateContextualPatientReplyInternal(payload: PatientChatPayload): st
     ])
   ) {
     if (caseId === 'case-dengue-alarm') {
-      return wrapConfirm('Sí doctor, trabajo en campo y hace 10 días viajé a unas plantaciones de banano donde había muchísimos zancudos y no usé repelente.');
+      return wrapConfirm('Sí doctor, trabajo en campo y hace 10 días viajé a unas plantaciones de banano donde había muchísimos zancudos y no usé repelente; además mi hermano en casa empezó ayer con fiebre.');
     }
     if (caseId === 'case-meningitis-bacteriana') {
       return wrapConfirm('Vivo en dormitorios compartidos en una base militar desde hace dos meses, doctor. Varios compañeros han estado con gripa estos días.');

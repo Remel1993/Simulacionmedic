@@ -8,33 +8,21 @@ interface PatientVisualCardProps {
   liveVitals?: VitalSigns;
   isDeceased?: boolean;
   variant?: 'banner' | 'vignette' | 'thumbnail';
+  dark?: boolean;
   className?: string;
 }
 
-function getIntensityBorderClass(intensity: PathologyIntensity): string {
+function getIntensityBorderClass(intensity: PathologyIntensity, dark = false): string {
   switch (intensity) {
     case 'deceased':
-      return 'border-rose-500';
+      return dark ? 'border-rose-600' : 'border-rose-500';
     case 'critical':
-      return 'border-rose-400 hover:border-rose-500';
+      return dark ? 'border-rose-500/80 hover:border-rose-400' : 'border-rose-400 hover:border-rose-500';
     case 'moderate':
-      return 'border-amber-400 hover:border-amber-500';
+      return dark ? 'border-amber-500/80 hover:border-amber-400' : 'border-amber-400 hover:border-amber-500';
     case 'mild':
     default:
-      return 'border-[#E2EAE4] hover:border-[#43866B]';
-  }
-}
-
-function getIntensityModalTextClass(intensity: PathologyIntensity): string {
-  switch (intensity) {
-    case 'deceased':
-    case 'critical':
-      return 'text-rose-700';
-    case 'moderate':
-      return 'text-amber-700';
-    case 'mild':
-    default:
-      return 'text-[#43866B]';
+      return dark ? 'border-[#294037] hover:border-[#4CA07E]' : 'border-[#E2EAE4] hover:border-[#43866B]';
   }
 }
 
@@ -43,6 +31,7 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
   liveVitals,
   isDeceased = false,
   variant = 'vignette',
+  dark = false,
   className = '',
 }) => {
   const [imageError, setImageError] = useState(false);
@@ -50,8 +39,7 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
 
   const illustration = getPatientIllustration(caseData, liveVitals, isDeceased);
   const isPediatric = caseData.patientInfo.age < 13;
-  const borderClass = getIntensityBorderClass(illustration.intensity);
-  const modalAccentTextClass = getIntensityModalTextClass(illustration.intensity);
+  const borderClass = getIntensityBorderClass(illustration.intensity, dark);
 
   useEffect(() => {
     setImageError(false);
@@ -69,7 +57,13 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
   }, [lightboxOpen]);
 
   const renderFallback = (iconSizeClass: string) => (
-    <div className="w-full h-full bg-gradient-to-br from-[#E4F1E8] to-[#F3F7F4] flex flex-col items-center justify-center text-[#43866B] gap-1">
+    <div
+      className={`w-full h-full flex flex-col items-center justify-center gap-1 ${
+        dark
+          ? 'bg-gradient-to-br from-[#163026] to-[#121E1A] text-[#68C79F]'
+          : 'bg-gradient-to-br from-[#E4F1E8] to-[#F3F7F4] text-[#43866B]'
+      }`}
+    >
       {isPediatric ? (
         <Baby className={iconSizeClass} />
       ) : (
@@ -81,7 +75,9 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
   if (variant === 'thumbnail') {
     return (
       <div
-        className={`relative aspect-[4/3] overflow-hidden rounded-lg bg-[#F3F7F4] border ${borderClass} shrink-0 ${className}`}
+        className={`relative aspect-[4/3] overflow-hidden rounded-lg border shrink-0 ${
+          dark ? 'bg-[#172621]' : 'bg-[#F3F7F4]'
+        } ${borderClass} ${className}`}
       >
         {!imageError ? (
           <img
@@ -102,36 +98,32 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
 
   const lightboxModal = lightboxOpen ? (
     <div
-      className="fixed inset-0 z-50 bg-[#263A32]/50 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-[#070E0C]/75 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={() => setLightboxOpen(false)}
       role="dialog"
       aria-modal="true"
-      aria-label={`Imagen del paciente ${caseData.patientInfo.name}`}
+      aria-label="Imagen del paciente ampliada"
     >
       <div
-        className={`w-full max-w-2xl bg-white border ${borderClass} rounded-2xl overflow-hidden shadow-2xl`}
+        className={`relative w-full max-w-2xl border ${borderClass} rounded-2xl overflow-hidden shadow-2xl ${
+          dark ? 'bg-[#121E1A]' : 'bg-[#F3F7F4]'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 py-3.5 bg-[#F8FBF9] border-b border-[#E2EAE4] flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-[#263A32] truncate">
-              {caseData.patientInfo.name} · {caseData.patientInfo.age} años ({caseData.patientInfo.sex})
-            </h3>
-            <p className={`text-xs font-semibold truncate ${modalAccentTextClass}`}>
-              {illustration.intensityLabel}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(false)}
-            className="w-9 h-9 rounded-xl bg-white border border-[#E2EAE4] hover:bg-[#E4F1E8] text-[#263A32] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
-            aria-label="Cerrar vista ampliada"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(false)}
+          className={`absolute top-3 right-3 z-10 w-9 h-9 rounded-full border flex items-center justify-center shrink-0 cursor-pointer transition-colors shadow-md ${
+            dark
+              ? 'bg-[#172621]/90 hover:bg-[#2F7A63] border-[#294037] text-[#E8F2ED] hover:text-white'
+              : 'bg-white/90 hover:bg-[#43866B] border-[#E2EAE4] text-[#263A32] hover:text-white'
+          }`}
+          aria-label="Cerrar vista ampliada"
+        >
+          <X className="w-4 h-4" />
+        </button>
 
-        <div className="relative aspect-[4/3] w-full bg-[#F3F7F4]">
+        <div className={`relative aspect-[4/3] w-full ${dark ? 'bg-[#121E1A]' : 'bg-[#F3F7F4]'}`}>
           {!imageError ? (
             <img
               src={illustration.src}
@@ -146,13 +138,6 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
             renderFallback('w-12 h-12')
           )}
         </div>
-
-        <div className="px-4 py-3 bg-[#F8FBF9] border-t border-[#E2EAE4]">
-          <p className="text-xs text-[#263A32] leading-snug">
-            <strong className="text-[#43866B] font-semibold">Motivo de consulta:</strong>{' '}
-            {caseData.patientInfo.consultReason}
-          </p>
-        </div>
       </div>
     </div>
   ) : null;
@@ -165,7 +150,9 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
           onClick={() => setLightboxOpen(true)}
           title="Ampliar imagen del paciente"
           aria-label="Ampliar imagen del paciente"
-          className={`group relative aspect-[4/3] w-28 sm:w-36 rounded-xl overflow-hidden bg-[#F3F7F4] border ${borderClass} transition-colors shrink-0 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-[#43866B] ${className}`}
+          className={`group relative aspect-[4/3] w-28 sm:w-36 rounded-xl overflow-hidden border ${borderClass} transition-colors shrink-0 cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-[#43866B] ${
+            dark ? 'bg-[#172621]' : 'bg-[#F3F7F4]'
+          } ${className}`}
         >
           {!imageError ? (
             <img
@@ -193,7 +180,9 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
   return (
     <>
       <div
-        className={`relative aspect-[4/3] w-full rounded-xl overflow-hidden bg-[#F3F7F4] border ${borderClass} shadow-sm ${className}`}
+        className={`relative aspect-[4/3] w-full rounded-xl overflow-hidden border ${borderClass} shadow-sm ${
+          dark ? 'bg-[#172621]' : 'bg-[#F3F7F4]'
+        } ${className}`}
       >
         {!imageError ? (
           <img
@@ -214,7 +203,11 @@ export const PatientVisualCard: React.FC<PatientVisualCardProps> = ({
           onClick={() => setLightboxOpen(true)}
           title="Ampliar imagen del paciente"
           aria-label="Ampliar imagen del paciente"
-          className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg bg-white/90 hover:bg-[#43866B] border border-[#E2EAE4] text-[#263A32] hover:text-white flex items-center justify-center cursor-pointer transition-colors shadow-sm"
+          className={`absolute top-2.5 right-2.5 w-8 h-8 rounded-lg border flex items-center justify-center cursor-pointer transition-colors shadow-sm ${
+            dark
+              ? 'bg-[#121E1A]/90 hover:bg-[#2F7A63] border-[#294037] text-[#E8F2ED] hover:text-white'
+              : 'bg-white/90 hover:bg-[#43866B] border-[#E2EAE4] text-[#263A32] hover:text-white'
+          }`}
         >
           <Expand className="w-3.5 h-3.5" />
         </button>

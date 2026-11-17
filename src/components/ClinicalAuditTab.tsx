@@ -556,16 +556,18 @@ export const ClinicalAuditTab: React.FC<ClinicalAuditTabProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="bg-[#F8FBF9] p-4 rounded-xl border border-[#E2EAE4] space-y-1.5">
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#55685F]">
-                Tu Diagnóstico y Justificación
+                {isEcoeMode && !isExpressDiag ? 'Tu Diagnóstico y Justificación' : 'Tu Diagnóstico Propuesto'}
               </div>
               <div className="text-sm font-bold text-[#263A32]">
                 {userSummary?.primaryDiagnosis || 'No registraste diagnóstico principal'}
               </div>
-              <p className="text-xs text-[#55685F] leading-relaxed">
-                {userSummary?.clinicalJustification
-                  ? userSummary.clinicalJustification
-                  : 'No ingresaste justificación clínica escrita.'}
-              </p>
+              {((isEcoeMode && !isExpressDiag) || Boolean(userSummary?.clinicalJustification)) && (
+                <p className="text-xs text-[#55685F] leading-relaxed">
+                  {userSummary?.clinicalJustification
+                    ? userSummary.clinicalJustification
+                    : 'No ingresaste justificación clínica escrita.'}
+                </p>
+              )}
             </div>
 
             <div className="bg-[#E4F1E8]/60 p-4 rounded-xl border border-[#72A98A] space-y-1.5">
@@ -584,7 +586,7 @@ export const ClinicalAuditTab: React.FC<ClinicalAuditTabProps> = ({
               ¿Por qué ocurre esta enfermedad? (Fisiopatología)
             </div>
             <p className="text-xs sm:text-sm text-[#263A32] leading-relaxed">{solution.pathophysiology}</p>
-            {feedback.reasoningEvaluation && (
+            {isEcoeMode && !isExpressDiag && feedback.reasoningEvaluation && (
               <div className="pt-2 border-t border-[#E2EAE4] text-xs text-[#55685F]">
                 <span className="font-semibold text-[#263A32]">Evaluación de tu razonamiento: </span>
                 {feedback.reasoningEvaluation}

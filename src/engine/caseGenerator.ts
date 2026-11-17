@@ -10,6 +10,8 @@ export interface SelectLocalCaseOptions {
   excludeCaseId?: string;
   excludeCaseIds?: string[];
   excludeDiagnoses?: string[];
+  completedCaseIds?: string[];
+  preferUnseen?: boolean;
   customCases?: ClinicalCase[];
 }
 
@@ -44,7 +46,7 @@ function pickLeastRecentlySeen(
 }
 
 /**
- * Combina los 100 casos curados con los casos locales agregados por el usuario.
+ * Combina los 166 casos curados con los casos locales agregados por el usuario.
  */
 export function getLocalCaseLibrary(customCases: ClinicalCase[] = []): ClinicalCase[] {
   const map = new Map<string, ClinicalCase>();
@@ -82,6 +84,8 @@ export function selectLocalClinicalCase(options: SelectLocalCaseOptions): Clinic
     excludeCaseId,
     excludeCaseIds = [],
     excludeDiagnoses = [],
+    completedCaseIds = [],
+    preferUnseen = false,
     customCases = [],
   } = options;
 
@@ -126,12 +130,26 @@ export function selectLocalClinicalCase(options: SelectLocalCaseOptions): Clinic
 
   const modeScopedPool = difficultyCandidates.length > 0 ? difficultyCandidates : basePool;
 
-  // 4. Filtro anti-repetición por diagnóstico reciente y caso reciente
+  // 4. Filtro prioritario de casos aún no resueltos (para progresión sistemática)
+  const completedSet = new Set(completedCaseIds);
+  const unseenInMode = modeScopedPool.filter((c) => !completedSet.has(c.id));
+  const unseenInSpecialty = basePool.filter((c) => !completedSet.has(c.id));
+  const preferredPool = preferUnseen
+    ? unseenInMode.length > 0
+      ? unseenInMode
+      : unseenInSpecialty.length > 0
+        ? unseenInSpecialty
+        : modeScopedPool
+    : unseenInMode.length > 0
+      ? unseenInMode
+      : modeScopedPool;
+
+  // 5. Filtro anti-repetición por diagnóstico reciente y caso reciente
   const recentDiagNorms = new Set(excludeDiagnoses.map(normalizeDiag).filter(Boolean));
-  const unseenDiagPool = modeScopedPool.filter(
+  const unseenDiagPool = preferredPool.filter(
     (c) => !recentDiagNorms.has(normalizeDiag(c.solution.correctDiagnosis))
   );
-  const candidatePool = unseenDiagPool.length > 0 ? unseenDiagPool : modeScopedPool;
+  const candidatePool = unseenDiagPool.length > 0 ? unseenDiagPool : preferredPool;
 
   const chosen = pickLeastRecentlySeen(candidatePool, excludeCaseIds, excludeCaseId);
 
@@ -160,6 +178,8 @@ export interface NewLocalCaseInput {
   temperature: number;
   oxygenSaturation: number;
   glasgow: number;
+  weightKg?: number;
+  heightCm?: number;
   correctDiagnosis: string;
   differentialDiagnoses: string[];
   pathophysiology: string;
@@ -203,6 +223,18 @@ export function buildCustomLocalCase(input: NewLocalCaseInput): ClinicalCase {
         oxygenSaturation: input.oxygenSaturation || 98,
         glasgow: input.glasgow || 15,
         bloodGlucose: 95,
+        weightKg:
+          typeof input.weightKg === 'number' && input.weightKg > 0
+            ? input.weightKg
+            : input.age < 12
+              ? Math.max(8, Math.round(input.age * 2 + 8))
+              : 70,
+        heightCm:
+          typeof input.heightCm === 'number' && input.heightCm > 0
+            ? input.heightCm
+            : input.age < 12
+              ? Math.round(75 + input.age * 6)
+              : 168,
       },
       background: {
         pathological: ['Sin otros antecedentes crónicos documentados en la ficha inicial.'],

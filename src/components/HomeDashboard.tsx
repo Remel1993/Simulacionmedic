@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   GameMode,
+  SavedCaseRecord,
   Specialty,
   TurnoMedicoConfig,
   TurnoProfile,
@@ -17,6 +18,8 @@ import {
   Check,
   Zap,
   Heart,
+  PlayCircle,
+  RotateCcw,
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -26,7 +29,13 @@ interface HomeDashboardProps {
   totalCasesCount?: number;
   initialMode?: GameMode;
   initialSpecialty?: Specialty;
+  externalClassification?: GameMode | 'turno_medico';
+  onClassificationChange?: (val: GameMode | 'turno_medico') => void;
   onPreferencesChange?: (mode: GameMode, specialty: Specialty) => void;
+  completedCaseIds?: string[];
+  history?: SavedCaseRecord[];
+  onStartNextUnseen?: (mode: GameMode, specialty: Specialty) => Promise<void>;
+  onRetryCase?: (caseId: string, mode?: GameMode) => Promise<void>;
 }
 
 type ClassificationKey = GameMode | 'turno_medico';
@@ -94,7 +103,7 @@ const MODES: Array<{
     desc: 'Estación ciega de 12 min sin ayudas ni resaltado visual.',
     details: [
       'Sin preguntas sugeridas ni desbloqueo masivo de maniobras o estudios.',
-      'Incluye diferenciales, criterios de referencia y plan de alta.',
+      'Incluye diferenciales, justificación clínica, criterios de referencia y plan de alta.',
       'Envío automático al concluir la estación clínica de 12 minutos.',
     ],
     icon: Check,
@@ -133,9 +142,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   totalCasesCount,
   initialMode = 'medico_general',
   initialSpecialty = 'aleatorio',
+  externalClassification,
+  onClassificationChange,
   onPreferencesChange,
+  completedCaseIds = [],
+  history = [],
+  onStartNextUnseen,
+  onRetryCase,
 }) => {
-  const [classification, setClassification] = useState<ClassificationKey>(initialMode);
+  const [classification, setClassification] = useState<ClassificationKey>(
+    externalClassification ?? initialMode
+  );
   const [selectedSpecialty, setSelectedSpecialty] = useState<Specialty>(initialSpecialty);
 
   const [turnoCount, setTurnoCount] = useState<3 | 5 | 7>(5);
@@ -143,8 +160,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [turnoTimer, setTurnoTimer] = useState<TurnoTimerMode>('untimed');
 
   useEffect(() => {
-    setClassification((prev) => (prev === 'turno_medico' ? prev : initialMode));
-  }, [initialMode]);
+    if (externalClassification) {
+      setClassification(externalClassification);
+    } else {
+      setClassification((prev) => (prev === 'turno_medico' ? prev : initialMode));
+    }
+  }, [initialMode, externalClassification]);
 
   useEffect(() => {
     setSelectedSpecialty(initialSpecialty);
@@ -155,8 +176,49 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const activeModeObj = !isTurno ? MODES.find((m) => m.id === classification) || MODES[1] : null;
   const ActiveIcon = isTurno ? Zap : activeModeObj?.icon || Stethoscope;
 
+  const { resolvedCount, masteryPct, averageScore, pendingReviewCase } = useMemo(() => {
+    const libraryIds = new Set(ALL_CURATED_CASES.map((c) => c.id));
+    const uniqueCompleted = new Set([
+      ...completedCaseIds,
+      ...history.map((h) => h.caseId).filter(Boolean),
+    ]);
+    const resolved = Array.from(uniqueCompleted).filter((id) => libraryIds.has(id)).length;
+    const pct = libraryCount > 0 ? Math.min(100, Math.round((resolved / libraryCount) * 100)) : 0;
+    const avg =
+      history.length > 0
+        ? Math.round(history.reduce((sum, h) => sum + h.score, 0) / history.length)
+        : 0;
+
+    // Best score per caseId so a later passing retry clears the "pending review" flag
+    const bestByCase = new Map<string, { record: SavedCaseRecord; bestScore: number }>();
+    for (const rec of history) {
+      if (!rec.caseId || !libraryIds.has(rec.caseId)) continue;
+      const prev = bestByCase.get(rec.caseId);
+      if (!prev) {
+        bestByCase.set(rec.caseId, { record: rec, bestScore: rec.score });
+      } else if (rec.score > prev.bestScore) {
+        bestByCase.set(rec.caseId, { record: rec, bestScore: rec.score });
+      }
+    }
+
+    const candidates = Array.from(bestByCase.values())
+      .filter(
+        ({ record, bestScore }) =>
+          bestScore < 70 || (record.evaluation?.criticalSafetyErrors?.length ?? 0) > 0
+      )
+      .sort((a, b) => a.bestScore - b.bestScore);
+
+    return {
+      resolvedCount: resolved,
+      masteryPct: pct,
+      averageScore: avg,
+      pendingReviewCase: candidates[0]?.record || null,
+    };
+  }, [completedCaseIds, history, libraryCount]);
+
   const handleClassificationChange = (val: ClassificationKey) => {
     setClassification(val);
+    onClassificationChange?.(val);
     if (val !== 'turno_medico') {
       onPreferencesChange?.(val, selectedSpecialty);
     }
@@ -200,12 +262,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     label: s.name,
   }));
 
+  const pendingReviewSpecLabel = pendingReviewCase
+    ? SPECIALTIES.find((s) => s.id === pendingReviewCase.specialty)?.name ||
+      pendingReviewCase.specialty
+    : '';
+
   return (
     <div className="space-y-5">
       {/* Main Compact Clinical Briefing & UI Selector Card */}
       <section className="relative rounded-2xl border border-[#E2EAE4] bg-white shadow-[0_2px_12px_rgba(38,58,50,0.06)]">
         <div className="bg-[#E4F1E8]/85 border-b border-[#CFE4D6] rounded-t-2xl px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#1F4B3A] uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#1F4B3A] uppercase tracking-wider tabular-nums">
             <Stethoscope className="w-4 h-4 text-[#2F7A63] shrink-0" />
             <span>Configuración de Consulta · {libraryCount} Casos Offline</span>
           </div>
@@ -354,6 +421,59 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </ul>
               )}
             </div>
+          </div>
+
+          {/* Library Mastery Strip & Quick Clinical Progression Actions */}
+          <div className="rounded-xl border border-[#E2EAE4] bg-[#FAFDFB] p-3.5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-[#263A32]">Dominio de la Biblioteca</span>
+              <span className="text-[#55685F] font-mono tabular-nums">
+                <strong className="text-[#1F4B3A]">{resolvedCount}</strong> / {libraryCount} casos completados
+                {history.length > 0 && (
+                  <>
+                    {' '}· Promedio <strong className="text-[#263A32]">{averageScore}/100</strong>
+                  </>
+                )}
+              </span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-[#E4F1E8] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[#2F7A63] transition-all duration-300"
+                style={{ width: `${masteryPct}%` }}
+              />
+            </div>
+
+            {(!isTurno && onStartNextUnseen) || (pendingReviewCase && onRetryCase) ? (
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 pt-0.5">
+                {!isTurno && onStartNextUnseen && (
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => void onStartNextUnseen(classification, selectedSpecialty)}
+                    className="w-full sm:w-auto max-w-full min-w-0 min-h-[40px] px-3.5 py-2 rounded-xl bg-white border border-[#CFE4D6] hover:border-[#43866B] hover:bg-[#E4F1E8]/50 disabled:opacity-50 text-xs font-semibold text-[#1F4B3A] flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <PlayCircle className="w-4 h-4 text-[#2F7A63] shrink-0" />
+                    <span className="min-w-0">Siguiente Caso No Visto</span>
+                  </button>
+                )}
+
+                {pendingReviewCase && onRetryCase && (
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() =>
+                      void onRetryCase(pendingReviewCase.caseId, pendingReviewCase.mode)
+                    }
+                    className="w-full sm:w-auto max-w-full min-w-0 min-h-[40px] px-3.5 py-2 rounded-xl bg-amber-50/80 border border-amber-200 hover:border-amber-400 hover:bg-amber-50 disabled:opacity-50 text-xs font-semibold text-amber-950 flex items-center justify-start gap-2 cursor-pointer transition-colors text-left tabular-nums"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span className="min-w-0 break-words leading-snug">
+                      Repasar Caso Pendiente ({pendingReviewSpecLabel} · {pendingReviewCase.score}/100)
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Single Primary Launch Action */}

@@ -4,9 +4,6 @@ import {
   Zap,
   Syringe,
   Activity,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   Send,
   CornerDownLeft,
   Volume2,
@@ -34,6 +31,7 @@ import {
   STAT_QUICK_PRESETS,
   StatApplyInput,
   StatPreset,
+  summarizeDrugSessionAccumulation,
 } from '../utils/statStabilization';
 
 interface StatStabilizationDrawerProps {
@@ -102,6 +100,10 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
   const isExamenMode = caseData.mode === 'examen';
   const isUnconscious = !isDeceased && liveVitals.glasgow <= 9;
   const isChatBlocked = Boolean(isDeceased || isUnconscious);
+  const weightKgApprox = caseData.vitalSigns.weightKg || (isPediatric ? Math.max(8, caseData.patientInfo.age * 2 + 8) : 70);
+  const sessionAccumulation = drug.trim()
+    ? summarizeDrugSessionAccumulation(drug, statInterventions, weightKgApprox)
+    : null;
 
   const filteredPresets =
     categoryFilter === 'Todos'
@@ -332,8 +334,15 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
               <h2 className="text-sm sm:text-base lg:text-lg font-bold text-[#263A32] truncate">
                 Aplicación STAT de Emergencias · {caseData.patientInfo.name}
               </h2>
-              <p className="text-[11px] sm:text-xs text-[#55685F] truncate">
-                Seleccione o edite la dosis exacta a administrar, observe los signos vitales en vivo y converse con el paciente.
+              <p className="text-[11px] sm:text-xs text-[#55685F] truncate tabular-nums">
+                {caseData.patientInfo.age} años · {caseData.patientInfo.sex}
+                {typeof (liveVitals.weightKg ?? caseData.vitalSigns.weightKg) === 'number'
+                  ? ` · Peso: ${liveVitals.weightKg ?? caseData.vitalSigns.weightKg} kg`
+                  : ` · Peso est.: ${weightKgApprox} kg`}
+                {typeof (liveVitals.heightCm ?? caseData.vitalSigns.heightCm) === 'number'
+                  ? ` · Talla: ${liveVitals.heightCm ?? caseData.vitalSigns.heightCm} cm`
+                  : ''}
+                {' · '}Seleccione o edite la dosis exacta a administrar.
               </p>
             </div>
           </div>
@@ -367,31 +376,6 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                 </div>
                 <div className="text-sm sm:text-base font-extrabold text-[#263A32] leading-tight">
                   {item.liveValue}
-                </div>
-                <div className="flex items-center justify-between gap-1 text-[10px]">
-                  <span className="text-[#718078]">Ing: {item.baseValue}</span>
-                  {item.changed ? (
-                    <span
-                      className={`inline-flex items-center gap-0.5 font-bold ${
-                        item.isImproved
-                          ? 'text-[#1F4B3A]'
-                          : item.isAlert
-                          ? 'text-rose-700'
-                          : 'text-sky-700'
-                      }`}
-                    >
-                      {item.direction === 'up' ? (
-                        <TrendingUp className="w-3 h-3 shrink-0" />
-                      ) : item.direction === 'down' ? (
-                        <TrendingDown className="w-3 h-3 shrink-0" />
-                      ) : (
-                        <Minus className="w-3 h-3 shrink-0" />
-                      )}
-                      <span>{item.deltaLabel}</span>
-                    </span>
-                  ) : (
-                    <span className="text-[#718078]">Igual</span>
-                  )}
                 </div>
               </div>
             ))}
@@ -489,6 +473,11 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                     placeholder="Ej. Labetalol, Solución Salina 0.9%, Oxígeno..."
                     className="w-full min-h-[40px] bg-white border border-[#E2EAE4] rounded-xl px-3 py-2 text-xs text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#43866B]/15 disabled:opacity-45"
                   />
+                  {sessionAccumulation && (
+                    <p className="mt-1 text-[11px] font-mono tabular-nums text-amber-800">
+                      Acumulado en sesión: {sessionAccumulation.count} dosis ({sessionAccumulation.totalLabel})
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -585,18 +574,6 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                         <p className="text-[11px] text-[#55685F] leading-snug">
                           {rec.physiologicalEffectSummary}
                         </p>
-                        {rec.deltas.length > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-0.5 font-mono tabular-nums text-[10px]">
-                            {rec.deltas.map((d, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 rounded-md bg-white border border-[#E2EAE4] text-[#263A32] font-medium"
-                              >
-                                {d.metric}: {d.before} → {d.after} ({d.deltaText})
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     );
                   })}

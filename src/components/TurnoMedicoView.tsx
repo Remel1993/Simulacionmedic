@@ -13,7 +13,7 @@ import {
 } from '../types/clinical';
 import { applyStatIntervention, STAT_QUICK_PRESETS, StatPreset } from '../utils/statStabilization';
 import { generateContextualPatientReply, humanizeMedicalJargon, humanizeReason } from '../engine/patientEngine';
-import { evaluateClinicalEvolutionStep } from '../engine/clinicalEvolution';
+import { evaluateClinicalEvolutionStep, sampleLiveMonitorTelemetry } from '../engine/clinicalEvolution';
 import { buildLivePhysicalExams, buildLiveStudies } from '../engine/liveClinicalSync';
 import { evaluateClinicalCaseLocally, evaluateClinicalOutcomeLocally } from '../engine/evaluationEngine';
 import { deriveDisclosedBackground } from '../utils/backgroundDisclosure';
@@ -61,6 +61,7 @@ interface TurnoMedicoViewProps {
 interface PatientDraftState {
   caseId: string;
   messages: ChatMessage[];
+  anchorVitalSigns: VitalSigns;
   liveVitalSigns: VitalSigns;
   statInterventions: StatInterventionRecord[];
   evolutionState?: ClinicalEvolutionState;
@@ -140,6 +141,7 @@ function createInitialDraft(caseData: ClinicalCase): PatientDraftState {
         timestamp: 'Ingreso',
       },
     ],
+    anchorVitalSigns: caseData.vitalSigns,
     liveVitalSigns: caseData.vitalSigns,
     statInterventions: [],
     evolutionState: initialEvo.evolutionState,
@@ -161,15 +163,15 @@ function formatTimer(totalSeconds: number): string {
 
 function getTriageShortBadge(triage: string): { label: string; className: string } {
   if (triage.includes('Nivel I')) {
-    return { label: 'N-I Crítico', className: 'bg-rose-50 border-rose-300 text-rose-800' };
+    return { label: 'N-I Crítico', className: 'bg-rose-950/75 border-rose-700/70 text-rose-200' };
   }
   if (triage.includes('Nivel II')) {
-    return { label: 'N-II Emergencia', className: 'bg-amber-50 border-amber-300 text-amber-900' };
+    return { label: 'N-II Emergencia', className: 'bg-amber-950/70 border-amber-700/70 text-amber-200' };
   }
   if (triage.includes('Nivel III')) {
-    return { label: 'N-III Urgencia', className: 'bg-sky-50 border-sky-300 text-sky-800' };
+    return { label: 'N-III Urgencia', className: 'bg-sky-950/70 border-sky-700/70 text-sky-200' };
   }
-  return { label: 'N-IV/V Consulta', className: 'bg-[#E4F1E8] border-[#72A98A] text-[#1F4B3A]' };
+  return { label: 'N-IV/V Consulta', className: 'bg-emerald-950/70 border-emerald-700/70 text-emerald-200' };
 }
 
 export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
@@ -303,9 +305,9 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
     setShiftSummaryOpen(true);
   };
 
-  // Shift & Active Patient Timer
+  // Shift & Active Patient Timer (runs continuously regardless of open modals, tabs, searching, or typing)
   useEffect(() => {
-    if (shiftSummaryOpen || allResolved || !activeCase || !activeDraft) return;
+    if (allResolved || !activeCase || !activeDraft) return;
     const isFlashViewing = Boolean(flashResultCaseId);
     if (isFlashViewing) return;
 
@@ -320,31 +322,63 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [shiftSummaryOpen, allResolved, flashResultCaseId, activeCase?.id, activeDraft?.result]);
+  }, [allResolved, flashResultCaseId, activeCase?.id, activeDraft?.result]);
 
-  // Clinical evolution every 30s in active patient
+  // Real-time physiological telemetry (every 1s) & clinical evolution (every 12s) in active patient
   useEffect(() => {
-    if (!activeCase || !activeDraft || activeDraft.result || shiftSummaryOpen || flashResultCaseId) return;
-    if (activeDraft.elapsedSeconds - activeDraft.lastEvolutionSecond < 30) return;
+    if (!activeCase || !activeDraft || activeDraft.result || flashResultCaseId) return;
 
-    const step = evaluateClinicalEvolutionStep({
-      caseData: activeCase,
-      baselineVitals: activeCase.vitalSigns,
-      currentVitals: activeDraft.liveVitalSigns,
-      elapsedSeconds: activeDraft.elapsedSeconds,
-      statInterventions: activeDraft.statInterventions,
-      unlockedExamCount: activeDraft.unlockedExamIds.length,
-      unlockedStudyCount: activeDraft.unlockedStudyIds.length,
-      lastEvaluatedSecond: activeDraft.lastEvolutionSecond,
+    const isActiveDeceased =
+      activeDraft.statInterventions.some((s) => s.isImmediateDeath) ||
+      activeDraft.liveVitalSigns.heartRate === 0 ||
+      (activeDraft.liveVitalSigns.bloodPressure || '').startsWith('0/');
+    if (isActiveDeceased) return;
+
+    const shouldEvolve = activeDraft.elapsedSeconds - activeDraft.lastEvolutionSecond >= 12;
+    const shouldSampleTelemetry = activeDraft.elapsedSeconds >= 1;
+    if (!shouldEvolve && !shouldSampleTelemetry) return;
+
+    updateDraft(activeCase.id, (prev) => {
+      if (prev.result) return prev;
+      let nextAnchor = prev.anchorVitalSigns || prev.liveVitalSigns;
+      let nextEvolutionState = prev.evolutionState;
+      let nextLastEval = prev.lastEvolutionSecond;
+
+      if (prev.elapsedSeconds - prev.lastEvolutionSecond >= 12) {
+        const step = evaluateClinicalEvolutionStep({
+          caseData: activeCase,
+          baselineVitals: activeCase.vitalSigns,
+          currentVitals: nextAnchor,
+          elapsedSeconds: prev.elapsedSeconds,
+          statInterventions: prev.statInterventions,
+          unlockedExamCount: prev.unlockedExamIds.length,
+          unlockedStudyCount: prev.unlockedStudyIds.length,
+          lastEvaluatedSecond: prev.lastEvolutionSecond,
+        });
+        nextLastEval = step.evolutionState.lastEvaluatedSecond;
+        nextEvolutionState = step.evolutionState;
+        if (step.changed) {
+          nextAnchor = step.updatedVitals;
+        }
+      }
+
+      const sampledLive = sampleLiveMonitorTelemetry({
+        anchorVitals: nextAnchor,
+        elapsedSeconds: prev.elapsedSeconds,
+        caseId: activeCase.id,
+        trajectory: nextEvolutionState?.trajectory,
+        isDeceased: false,
+      });
+
+      return {
+        ...prev,
+        anchorVitalSigns: nextAnchor,
+        lastEvolutionSecond: nextLastEval,
+        evolutionState: nextEvolutionState,
+        liveVitalSigns: sampledLive,
+      };
     });
-
-    updateDraft(activeCase.id, (prev) => ({
-      ...prev,
-      lastEvolutionSecond: step.evolutionState.lastEvaluatedSecond,
-      evolutionState: step.evolutionState,
-      liveVitalSigns: step.changed ? step.updatedVitals : prev.liveVitalSigns,
-    }));
-  }, [activeDraft?.elapsedSeconds, activeCase?.id]);
+  }, [activeDraft?.elapsedSeconds, activeCase?.id, flashResultCaseId]);
 
   // Auto-submit on per_patient_180 or global_720 expiration
   useEffect(() => {
@@ -432,7 +466,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
     if (isDeceased) return;
 
     const outcome = applyStatIntervention(
-      activeDraft.liveVitalSigns,
+      activeDraft.anchorVitalSigns || activeDraft.liveVitalSigns,
       activeCase.vitalSigns,
       activeCase,
       presetOrCustom,
@@ -454,12 +488,21 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
     updateDraft(activeCase.id, (prev) => {
       const normalizedNew = `${outcome.medicationItem.drug.toLowerCase()}::${outcome.medicationItem.dose.toLowerCase()}::${outcome.medicationItem.route.toLowerCase()}`;
-      const exists = prev.medications.some(
+      const matchIdx = prev.medications.findIndex(
         (m) => `${m.drug.toLowerCase()}::${m.dose.toLowerCase()}::${m.route.toLowerCase()}` === normalizedNew
       );
-      const nextMeds = exists
-        ? prev.medications
-        : [...prev.medications, { ...outcome.medicationItem, phase: 'stat_urgencias' as const }];
+      const nextMeds =
+        matchIdx === -1
+          ? [...prev.medications, { ...outcome.medicationItem, phase: 'stat_urgencias' as const }]
+          : prev.medications.map((m, idx) => {
+              if (idx !== matchIdx) return m;
+              const countMatch = (m.frequency || '').match(/×\s*(\d+)/);
+              const nextCount = countMatch ? parseInt(countMatch[1], 10) + 1 : 2;
+              return {
+                ...m,
+                frequency: `Aplicado STAT × ${nextCount}`,
+              };
+            });
 
       const sysMsg: ChatMessage = {
         id: `t-sys-${Date.now()}`,
@@ -477,6 +520,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
       return {
         ...prev,
+        anchorVitalSigns: outcome.updatedVitals,
         liveVitalSigns: outcome.updatedVitals,
         statInterventions: nextStats,
         evolutionState: evoAfterStat.evolutionState,
@@ -576,20 +620,20 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
   const globalRemaining = Math.max(0, 720 - shiftElapsedSeconds);
 
   return (
-    <div className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 sm:px-5 py-4 space-y-4">
+    <div className="flex-1 max-w-7xl w-full min-w-0 mx-auto px-3 sm:px-5 py-4 space-y-4 text-[#E8F2ED]">
       {/* Turno Header Bar */}
-      <div className="bg-white border border-[#E2EAE4] rounded-2xl p-3.5 sm:p-5 shadow-[0_1px_3px_rgba(38,58,50,0.04)] space-y-3.5">
+      <div className="bg-[#121E1A] border border-[#243830] rounded-2xl p-3.5 sm:p-5 shadow-[0_6px_20px_rgba(0,0,0,0.35)] space-y-3.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-950/70 border border-amber-700/70 flex items-center justify-center text-amber-300 shrink-0">
               <Zap className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-sm sm:text-base font-bold text-[#263A32] tracking-tight">
+                <h1 className="text-sm sm:text-base font-bold text-[#E8F2ED] tracking-tight">
                   Modo Turno Médico · Guardia Express
                 </h1>
-                <span className="text-xs font-semibold text-[#43866B] whitespace-nowrap">
+                <span className="text-xs font-semibold text-[#68C79F] whitespace-nowrap">
                   · {config.profile === 'mixto'
                     ? 'Guardia Mixta'
                     : config.profile === 'consulta_rapida'
@@ -597,8 +641,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                     : 'Urgencias / Choque'}
                 </span>
               </div>
-              <p className="text-xs text-[#55685F] mt-0.5">
-                Pacientes atendidos: <strong className="text-[#263A32] tabular-nums">{resolvedResults.length} / {cases.length}</strong> · Prioriza por triage o atiende en cola rápida.
+              <p className="text-xs text-[#9FB5AA] mt-0.5">
+                Pacientes atendidos: <strong className="text-[#E8F2ED] tabular-nums">{resolvedResults.length} / {cases.length}</strong> · Prioriza por triage o atiende en cola rápida.
               </p>
             </div>
           </div>
@@ -609,8 +653,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <div
                 className={`px-3 py-1.5 rounded-lg border font-mono tabular-nums text-xs flex items-center gap-1.5 ${
                   perPatientRemaining <= 30
-                    ? 'bg-rose-50 border-rose-300 text-rose-800'
-                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                    ? 'bg-rose-950/70 border-rose-700/70 text-rose-200'
+                    : 'bg-amber-950/65 border-amber-700/65 text-amber-200'
                 }`}
               >
                 <Timer className="w-3.5 h-3.5 shrink-0" />
@@ -621,8 +665,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <div
                 className={`px-3 py-1.5 rounded-lg border font-mono tabular-nums text-xs flex items-center gap-1.5 ${
                   globalRemaining <= 90
-                    ? 'bg-rose-50 border-rose-300 text-rose-800'
-                    : 'bg-sky-50 border-sky-200 text-sky-900'
+                    ? 'bg-rose-950/70 border-rose-700/70 text-rose-200'
+                    : 'bg-sky-950/65 border-sky-700/65 text-sky-200'
                 }`}
               >
                 <Timer className="w-3.5 h-3.5 shrink-0" />
@@ -630,9 +674,9 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 <strong>{formatTimer(globalRemaining)}</strong>
               </div>
             ) : (
-              <div className="px-3 py-1.5 rounded-lg border bg-[#F8FBF9] border-[#E2EAE4] text-[#263A32] font-mono tabular-nums text-xs flex items-center gap-1.5">
-                <Timer className="w-3.5 h-3.5 text-[#43866B] shrink-0" />
-                <span className="font-sans text-[11px] text-[#55685F]">Turno:</span>
+              <div className="px-3 py-1.5 rounded-lg border bg-[#172621] border-[#294037] text-[#E8F2ED] font-mono tabular-nums text-xs flex items-center gap-1.5">
+                <Timer className="w-3.5 h-3.5 text-[#68C79F] shrink-0" />
+                <span className="font-sans text-[11px] text-[#9FB5AA]">Turno:</span>
                 <strong>{formatTimer(shiftElapsedSeconds)}</strong>
               </div>
             )}
@@ -641,7 +685,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShiftSummaryOpen(true)}
-                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#43866B] hover:bg-[#356D56] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <Award className="w-3.5 h-3.5 shrink-0" />
                 <span>Balance ({resolvedResults.length})</span>
@@ -652,25 +696,25 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmExit(true)}
-                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#F8FBF9] hover:bg-rose-50 border border-[#E2EAE4] hover:border-rose-300 text-[#263A32] hover:text-rose-800 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#172621] hover:bg-rose-950/70 border border-[#294037] hover:border-rose-700/70 text-[#E8F2ED] hover:text-rose-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5 shrink-0" />
                 <span>Salir</span>
               </button>
             ) : (
-              <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-300 rounded-lg px-2.5 py-1">
-                <span className="text-[11px] text-rose-900 font-semibold">¿Terminar turno?</span>
+              <div className="flex items-center gap-1.5 bg-rose-950/75 border border-rose-700/70 rounded-lg px-2.5 py-1">
+                <span className="text-[11px] text-rose-200 font-semibold">¿Terminar turno?</span>
                 <button
                   type="button"
                   onClick={onExitTurno}
-                  className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold cursor-pointer"
+                  className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold cursor-pointer"
                 >
                   Sí, salir
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmExit(false)}
-                  className="px-2.5 py-1 rounded bg-white border border-[#E2EAE4] text-[#263A32] text-[11px] font-semibold cursor-pointer"
+                  className="px-2.5 py-1 rounded bg-[#172621] border border-[#294037] text-[#E8F2ED] text-[11px] font-semibold cursor-pointer"
                 >
                   No
                 </button>
@@ -698,19 +742,19 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 }}
                 className={`min-w-[210px] max-w-[245px] shrink-0 rounded-xl border p-2.5 text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                   isActive
-                    ? 'bg-[#E4F1E8] border-[#43866B] ring-1 ring-[#43866B]/30 shadow-sm'
+                    ? 'bg-[#183329] border-[#4CA07E] ring-1 ring-[#4CA07E]/35 shadow-sm'
                     : isDone
-                    ? 'bg-[#F8FBF9] border-[#72A98A] opacity-90 hover:opacity-100'
-                    : 'bg-white border-[#E2EAE4] hover:border-[#72A98A] hover:bg-[#F8FBF9]'
+                    ? 'bg-[#14231D] border-[#2F5B48] opacity-90 hover:opacity-100'
+                    : 'bg-[#172621] border-[#243830] hover:border-[#43866B] hover:bg-[#1B2D27]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-[10px] font-mono font-bold text-[#55685F] tabular-nums">
+                  <span className="text-[10px] font-mono font-bold text-[#9FB5AA] tabular-nums">
                     CAMA #{idx + 1}
                   </span>
                   {isDone ? (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#E4F1E8] border border-[#72A98A] text-[#1F4B3A] flex items-center gap-1 tabular-nums">
-                      <CheckCircle2 className="w-3 h-3 text-[#43866B]" />
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950/75 border border-emerald-700/70 text-emerald-200 flex items-center gap-1 tabular-nums">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                       {draft.result?.evaluation.totalScore}/100
                     </span>
                   ) : (
@@ -729,13 +773,14 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                       (draft?.liveVitalSigns?.bloodPressure || '').startsWith('0/')
                     }
                     variant="thumbnail"
+                    dark
                     className="w-10"
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold text-[#263A32] truncate">
+                    <div className="text-xs font-bold text-[#E8F2ED] truncate">
                       {c.patientInfo.name} · {c.patientInfo.age}a
                     </div>
-                    <div className="text-[11px] text-[#55685F] line-clamp-1">
+                    <div className="text-[11px] text-[#9FB5AA] line-clamp-1">
                       {c.patientInfo.consultReason}
                     </div>
                   </div>
@@ -748,18 +793,18 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
       {/* Main Content: Either Balance Final, Flash Result Card, or 3-Column Express Workstation */}
       {shiftSummaryOpen || allResolved && !flashResultCaseId ? (
-        <section className="bg-white border border-[#E2EAE4] rounded-2xl p-5 sm:p-7 space-y-6 shadow-[0_1px_3px_rgba(38,58,50,0.04)]">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E2EAE4] pb-4">
+        <section className="bg-[#121E1A] border border-[#243830] rounded-2xl p-5 sm:p-7 space-y-6 shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#243830] pb-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2 text-[#43866B] text-xs font-bold">
+              <div className="flex items-center gap-2 text-[#68C79F] text-xs font-bold">
                 <Award className="w-4 h-4 shrink-0" />
                 <span>Balance Clínico del Turno Médico</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-[#263A32] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-bold text-[#E8F2ED] tracking-tight">
                 {allResolved ? 'Guardia Completada' : 'Resumen Parcial del Turno'}
               </h2>
-              <p className="text-xs text-[#55685F]">
-                Tiempo total en guardia: <strong className="text-[#263A32] font-mono tabular-nums">{formatTimer(shiftElapsedSeconds)}</strong> · Revisa la morbimortalidad, diagnóstico, fase STAT y tratamiento definitivo de cada paciente.
+              <p className="text-xs text-[#9FB5AA]">
+                Tiempo total en guardia: <strong className="text-[#E8F2ED] font-mono tabular-nums">{formatTimer(shiftElapsedSeconds)}</strong> · Revisa la morbimortalidad, diagnóstico, fase STAT y tratamiento definitivo de cada paciente.
               </p>
             </div>
 
@@ -768,7 +813,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShiftSummaryOpen(false)}
-                  className="min-h-[40px] px-4 py-2 rounded-xl bg-[#43866B] hover:bg-[#356D56] text-white text-xs font-semibold cursor-pointer transition-colors"
+                  className="min-h-[40px] px-4 py-2 rounded-xl bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-xs font-semibold cursor-pointer transition-colors"
                 >
                   Continuar Atendiendo Pendientes
                 </button>
@@ -776,7 +821,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <button
                 type="button"
                 onClick={() => onStartNewTurno(config)}
-                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#E4F1E8] hover:bg-[#D4E8DA] border border-[#72A98A] text-[#1F4B3A] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#163026] hover:bg-[#1D3E31] border border-[#3E8569] text-[#D7F0E3] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Nuevo Turno Igual</span>
@@ -784,7 +829,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <button
                 type="button"
                 onClick={onExitTurno}
-                className="min-h-[40px] px-4 py-2 rounded-xl bg-white hover:bg-[#F3F7F4] border border-[#E2EAE4] text-[#263A32] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#172621] hover:bg-[#1E312B] border border-[#294037] text-[#E8F2ED] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <Home className="w-3.5 h-3.5" />
                 <span>Panel Principal</span>
@@ -794,33 +839,33 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
           {/* Cohort KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4">
-              <div className="text-xs text-[#55685F] font-semibold">Desenlace Favorable</div>
-              <div className="text-2xl font-bold text-[#1B5E3F] mt-1 font-mono tabular-nums">
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4">
+              <div className="text-xs text-[#9FB5AA] font-semibold">Desenlace Favorable</div>
+              <div className="text-2xl font-bold text-emerald-300 mt-1 font-mono tabular-nums">
                 {shiftMetrics.saved} / {shiftMetrics.total}
               </div>
-              <div className="text-[11px] text-[#718078] mt-0.5">Pacientes resueltos sin secuelas</div>
+              <div className="text-[11px] text-[#7D968B] mt-0.5">Pacientes resueltos sin secuelas</div>
             </div>
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4">
-              <div className="text-xs text-[#55685F] font-semibold">Precisión Diagnóstica</div>
-              <div className="text-2xl font-bold text-sky-800 mt-1 font-mono tabular-nums">
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4">
+              <div className="text-xs text-[#9FB5AA] font-semibold">Precisión Diagnóstica</div>
+              <div className="text-2xl font-bold text-sky-300 mt-1 font-mono tabular-nums">
                 {shiftMetrics.diagOk} / {shiftMetrics.total}
               </div>
-              <div className="text-[11px] text-[#718078] mt-0.5">Diagnósticos principales acertados</div>
+              <div className="text-[11px] text-[#7D968B] mt-0.5">Diagnósticos principales acertados</div>
             </div>
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4">
-              <div className="text-xs text-[#55685F] font-semibold">Puntaje Promedio</div>
-              <div className="text-2xl font-bold text-[#263A32] mt-1 font-mono tabular-nums">
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4">
+              <div className="text-xs text-[#9FB5AA] font-semibold">Puntaje Promedio</div>
+              <div className="text-2xl font-bold text-[#E8F2ED] mt-1 font-mono tabular-nums">
                 {shiftMetrics.avgScore} pts
               </div>
-              <div className="text-[11px] text-[#718078] mt-0.5">Rúbrica clínica integral /100</div>
+              <div className="text-[11px] text-[#7D968B] mt-0.5">Rúbrica clínica integral /100</div>
             </div>
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4">
-              <div className="text-xs text-[#55685F] font-semibold">Eventos Críticos / Mortalidad</div>
-              <div className={`text-2xl font-bold mt-1 font-mono tabular-nums ${shiftMetrics.morbidityOrDeath > 0 ? 'text-rose-700' : 'text-[#1B5E3F]'}`}>
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4">
+              <div className="text-xs text-[#9FB5AA] font-semibold">Eventos Críticos / Mortalidad</div>
+              <div className={`text-2xl font-bold mt-1 font-mono tabular-nums ${shiftMetrics.morbidityOrDeath > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
                 {shiftMetrics.morbidityOrDeath}
               </div>
-              <div className="text-[11px] text-[#718078] mt-0.5">Morbimortalidad severa evitada o ocurrida</div>
+              <div className="text-[11px] text-[#7D968B] mt-0.5">Morbimortalidad severa evitada o ocurrida</div>
             </div>
           </div>
 
@@ -832,11 +877,11 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 return (
                   <div
                     key={c.id}
-                    className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4 flex flex-wrap items-center justify-between gap-3"
+                    className="bg-[#172621] border border-[#294037] rounded-xl p-4 flex flex-wrap items-center justify-between gap-3"
                   >
                     <div>
-                      <span className="text-xs font-bold text-[#43866B]">Cama #{idx + 1} · {c.patientInfo.name}</span>
-                      <p className="text-xs text-[#55685F] mt-0.5">Aún sin finalizar ({c.patientInfo.consultReason})</p>
+                      <span className="text-xs font-bold text-[#68C79F]">Cama #{idx + 1} · {c.patientInfo.name}</span>
+                      <p className="text-xs text-[#9FB5AA] mt-0.5">Aún sin finalizar ({c.patientInfo.consultReason})</p>
                     </div>
                     <button
                       type="button"
@@ -844,7 +889,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                         setShiftSummaryOpen(false);
                         setActiveCaseIndex(idx);
                       }}
-                      className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#43866B] hover:bg-[#356D56] text-white text-xs font-semibold cursor-pointer transition-colors"
+                      className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-xs font-semibold cursor-pointer transition-colors"
                     >
                       Atender Ahora
                     </button>
@@ -854,34 +899,34 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
               const statusBadge =
                 res.outcomeStatus === 'saved'
-                  ? 'bg-[#E4F1E8] border-[#72A98A] text-[#1F4B3A]'
+                  ? 'bg-emerald-950/75 border-emerald-700/70 text-emerald-200'
                   : res.outcomeStatus === 'stabilized_morbidity'
-                  ? 'bg-amber-50 border-amber-300 text-amber-900'
-                  : 'bg-rose-50 border-rose-300 text-rose-800';
+                  ? 'bg-amber-950/70 border-amber-700/70 text-amber-200'
+                  : 'bg-rose-950/75 border-rose-700/70 text-rose-200';
 
               const statAudit = res.evaluation.statAudit;
 
               return (
                 <div
                   key={c.id}
-                  className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4 space-y-2.5"
+                  className="bg-[#172621] border border-[#294037] rounded-xl p-4 space-y-2.5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-[#55685F]">Cama #{idx + 1}</span>
-                        <span className="text-sm font-bold text-[#263A32]">{c.patientInfo.name} ({c.patientInfo.age}a)</span>
+                        <span className="text-xs font-mono font-bold text-[#9FB5AA]">Cama #{idx + 1}</span>
+                        <span className="text-sm font-bold text-[#E8F2ED]">{c.patientInfo.name} ({c.patientInfo.age}a)</span>
                         <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${statusBadge}`}>
                           {res.outcomeHeadline}
                         </span>
                       </div>
-                      <div className="text-xs text-[#263A32]">
-                        <strong className="text-[#43866B]">Dx Real:</strong> {c.solution.correctDiagnosis} ·{' '}
-                        <strong className="text-[#55685F]">Tu Dx:</strong>{' '}
+                      <div className="text-xs text-[#D2E2DA]">
+                        <strong className="text-[#68C79F]">Dx Real:</strong> {c.solution.correctDiagnosis} ·{' '}
+                        <strong className="text-[#9FB5AA]">Tu Dx:</strong>{' '}
                         {res.evaluation.userSummary?.primaryDiagnosis || 'No especificado'}
                       </div>
                       {statAudit?.requiresUrgentStat && (
-                        <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1">
+                        <div className="text-[11px] text-amber-200 bg-amber-950/60 border border-amber-700/65 rounded-lg px-2.5 py-1.5 mt-1">
                           <strong>STAT/Urgencias:</strong> {statAudit.statGuidanceComment}
                         </div>
                       )}
@@ -889,17 +934,17 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
-                        <div className="text-lg font-bold font-mono tabular-nums text-[#263A32]">
+                        <div className="text-lg font-bold font-mono tabular-nums text-[#E8F2ED]">
                           {res.evaluation.totalScore}/100
                         </div>
-                        <div className="text-[10px] text-[#55685F] font-mono tabular-nums">
+                        <div className="text-[10px] text-[#9FB5AA] font-mono tabular-nums">
                           {formatTimer(res.timeSpentSeconds)}
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setAuditModalCaseId(c.id)}
-                        className="min-h-[38px] px-3.5 py-2 rounded-lg bg-[#43866B] hover:bg-[#356D56] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                        className="min-h-[38px] px-3.5 py-2 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
                         <BookOpen className="w-3.5 h-3.5" />
                         <span>Auditoría y Clase</span>
@@ -913,22 +958,23 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
         </section>
       ) : flashResult ? (
         /* Flash Inter-Patient Outcome Card */
-        <section className="bg-white border border-[#E2EAE4] rounded-2xl p-5 sm:p-8 max-w-4xl mx-auto space-y-5 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E2EAE4] pb-4">
+        <section className="bg-[#121E1A] border border-[#243830] rounded-2xl p-5 sm:p-8 max-w-4xl mx-auto space-y-5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#243830] pb-4">
             <div className="flex items-center gap-3">
               <PatientVisualCard
                 caseData={flashResult.caseData}
                 isDeceased={flashResult.outcomeStatus === 'deceased'}
                 variant="thumbnail"
+                dark
                 className="w-16"
               />
               <div
                 className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${
                   flashResult.outcomeStatus === 'saved'
-                    ? 'bg-[#E4F1E8] border-[#72A98A] text-[#43866B]'
+                    ? 'bg-emerald-950/75 border-emerald-700/70 text-emerald-300'
                     : flashResult.outcomeStatus === 'stabilized_morbidity'
-                    ? 'bg-amber-50 border-amber-300 text-amber-700'
-                    : 'bg-rose-50 border-rose-300 text-rose-700'
+                    ? 'bg-amber-950/70 border-amber-700/70 text-amber-300'
+                    : 'bg-rose-950/75 border-rose-700/70 text-rose-300'
                 }`}
               >
                 {flashResult.outcomeStatus === 'saved' ? (
@@ -940,46 +986,46 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 )}
               </div>
               <div>
-                <div className="text-xs font-semibold text-[#55685F]">
+                <div className="text-xs font-semibold text-[#9FB5AA]">
                   Desenlace Rápido · {flashResult.caseData.patientInfo.name}
                 </div>
-                <h2 className="text-lg sm:text-xl font-bold text-[#263A32]">
+                <h2 className="text-lg sm:text-xl font-bold text-[#E8F2ED]">
                   {flashResult.outcomeHeadline}
                 </h2>
               </div>
             </div>
 
             <div className="text-right">
-              <div className="text-3xl font-bold font-mono tabular-nums text-[#263A32]">
+              <div className="text-3xl font-bold font-mono tabular-nums text-[#E8F2ED]">
                 {flashResult.evaluation.totalScore}
-                <span className="text-sm text-[#55685F] font-semibold"> /100</span>
+                <span className="text-sm text-[#9FB5AA] font-semibold"> /100</span>
               </div>
-              <div className="text-[11px] text-[#55685F] font-mono tabular-nums">
+              <div className="text-[11px] text-[#9FB5AA] font-mono tabular-nums">
                 Tiempo: {formatTimer(flashResult.timeSpentSeconds)}
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4 space-y-1.5">
-              <div className="font-bold text-[#43866B]">Diagnóstico</div>
-              <p className="text-[#263A32] font-semibold">
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4 space-y-1.5">
+              <div className="font-bold text-[#68C79F]">Diagnóstico</div>
+              <p className="text-[#E8F2ED] font-semibold">
                 Real: {flashResult.caseData.solution.correctDiagnosis}
               </p>
-              <p className="text-[#55685F]">
+              <p className="text-[#9FB5AA]">
                 Tu impresión: {flashResult.evaluation.userSummary?.primaryDiagnosis || 'Sin diagnóstico registrado'}
               </p>
-              <p className="text-[#263A32] pt-1 leading-relaxed">
+              <p className="text-[#D2E2DA] pt-1 leading-relaxed">
                 {flashResult.evaluation.feedback.diagnosisAccuracyComment}
               </p>
             </div>
 
-            <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4 space-y-1.5">
-              <div className="font-bold text-amber-800">
+            <div className="bg-[#172621] border border-[#294037] rounded-xl p-4 space-y-1.5">
+              <div className="font-bold text-amber-300">
                 Manejo de Referencia para Estudio
               </div>
               {flashResult.evaluation.statAudit?.requiresUrgentStat && (
-                <p className="text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                <p className="text-amber-200 bg-amber-950/60 border border-amber-700/65 rounded-lg px-2.5 py-1.5">
                   <strong>Fase STAT / Urgencias:</strong>{' '}
                   {flashResult.evaluation.statAudit.recommendedStatProtocol
                     ?.slice(0, 3)
@@ -987,7 +1033,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                     .join(' · ')}
                 </p>
               )}
-              <p className="text-[#263A32] leading-relaxed">
+              <p className="text-[#D2E2DA] leading-relaxed">
                 <strong>Esquema Definitivo:</strong>{' '}
                 {flashResult.caseData.solution.optimalTreatment.pharmacological
                   .slice(0, 3)
@@ -1002,16 +1048,16 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
             <button
               type="button"
               onClick={() => setAuditModalCaseId(flashResult.caseData.id)}
-              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white hover:bg-[#F3F7F4] border border-[#E2EAE4] text-[#263A32] text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-[#172621] hover:bg-[#1E312B] border border-[#294037] text-[#E8F2ED] text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors"
             >
-              <BookOpen className="w-4 h-4 text-[#43866B]" />
+              <BookOpen className="w-4 h-4 text-[#68C79F]" />
               <span>Ver Auditoría Completa y Clase Magistral</span>
             </button>
 
             <button
               type="button"
               onClick={handleGoToNextPendingPatient}
-              className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#43866B] hover:bg-[#356D56] text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-sm cursor-pointer transition-colors"
+              className="min-h-[42px] px-5 py-2.5 rounded-xl bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-sm cursor-pointer transition-colors"
             >
               <span>
                 {cases.some((c) => !drafts[c.id]?.result)
@@ -1026,36 +1072,54 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
         /* 3-Column Express Workstation */
         <div className="space-y-3.5">
           {/* Compact Live Vital Signs Telemetry Strip */}
-          <div className="bg-white border border-[#E2EAE4] rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+          <div className="bg-[#121E1A] border border-[#243830] rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_4px_14px_rgba(0,0,0,0.3)]">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
-              <div className="font-bold text-[#263A32] flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-[#43866B]" />
+              <div className="font-bold text-[#E8F2ED] flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-[#68C79F]" />
                 <span>
-                  {activeDraft.caseId === activeCase.id && `${activeCase.patientInfo.name}, ${activeCase.patientInfo.age}a (${activeCase.patientInfo.sex})`}
+                  {activeDraft.caseId === activeCase.id &&
+                    `${activeCase.patientInfo.name}, ${activeCase.patientInfo.age}a (${activeCase.patientInfo.sex})${
+                      typeof (activeDraft.liveVitalSigns.weightKg ?? activeCase.vitalSigns.weightKg) === 'number'
+                        ? ` · ${activeDraft.liveVitalSigns.weightKg ?? activeCase.vitalSigns.weightKg} kg`
+                        : ''
+                    }${
+                      typeof (activeDraft.liveVitalSigns.heightCm ?? activeCase.vitalSigns.heightCm) === 'number'
+                        ? ` / ${activeDraft.liveVitalSigns.heightCm ?? activeCase.vitalSigns.heightCm} cm`
+                        : ''
+                    }`}
                 </span>
+                {!isDeceased && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#163026] border border-[#3E8569] text-[10px] font-bold text-[#8FE3BF]"
+                    title="Monitoreo continuo en tiempo real"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    En vivo
+                  </span>
+                )}
               </div>
-              <span className="font-mono tabular-nums text-[#263A32] font-semibold flex items-center gap-1">
-                <HeartPulse className="w-3.5 h-3.5 text-rose-600" />
+              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold flex items-center gap-1 transition-colors">
+                <HeartPulse className="w-3.5 h-3.5 text-rose-400" />
                 PA {activeDraft.liveVitalSigns.bloodPressure}
               </span>
-              <span className="font-mono tabular-nums text-[#1B5E3F] font-semibold flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5 text-[#43866B]" />
+              <span className="font-mono tabular-nums text-emerald-300 font-semibold flex items-center gap-1 transition-colors">
+                <Activity className="w-3.5 h-3.5 text-emerald-400" />
                 FC {activeDraft.liveVitalSigns.heartRate} lpm
               </span>
-              <span className="font-mono tabular-nums text-sky-800 font-semibold flex items-center gap-1">
-                <Wind className="w-3.5 h-3.5 text-sky-600" />
+              <span className="font-mono tabular-nums text-sky-300 font-semibold flex items-center gap-1 transition-colors">
+                <Wind className="w-3.5 h-3.5 text-sky-400" />
                 FR {activeDraft.liveVitalSigns.respiratoryRate} · SpO₂ {activeDraft.liveVitalSigns.oxygenSaturation}%
               </span>
-              <span className="font-mono tabular-nums text-amber-800 font-semibold flex items-center gap-1">
-                <Thermometer className="w-3.5 h-3.5 text-amber-600" />
-                T° {activeDraft.liveVitalSigns.temperature}°C
+              <span className="font-mono tabular-nums text-amber-300 font-semibold flex items-center gap-1 transition-colors">
+                <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+                T° {activeDraft.liveVitalSigns.temperature.toFixed(1)}°C
               </span>
-              <span className="font-mono tabular-nums text-[#263A32] font-semibold flex items-center gap-1">
-                <Brain className="w-3.5 h-3.5 text-[#43866B]" />
+              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold flex items-center gap-1 transition-colors">
+                <Brain className="w-3.5 h-3.5 text-[#68C79F]" />
                 GCS {activeDraft.liveVitalSigns.glasgow}/15
               </span>
               {activeDraft.liveVitalSigns.bloodGlucose !== undefined && (
-                <span className="font-mono tabular-nums text-amber-900 font-semibold">
+                <span className="font-mono tabular-nums text-amber-200 font-semibold">
                   Glu {activeDraft.liveVitalSigns.bloodGlucose} mg/dL
                 </span>
               )}
@@ -1065,11 +1129,11 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               <span
                 className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
                   activeDraft.evolutionState.trajectory === 'mejorando'
-                    ? 'bg-[#E4F1E8] border-[#72A98A] text-[#1F4B3A]'
+                    ? 'bg-emerald-950/75 border-emerald-700/70 text-emerald-200'
                     : activeDraft.evolutionState.trajectory === 'critico' ||
                       activeDraft.evolutionState.trajectory === 'deterioro'
-                    ? 'bg-rose-50 border-rose-300 text-rose-800'
-                    : 'bg-[#F8FBF9] border-[#E2EAE4] text-[#55685F]'
+                    ? 'bg-rose-950/75 border-rose-700/70 text-rose-200'
+                    : 'bg-[#172621] border-[#294037] text-[#9FB5AA]'
                 }`}
               >
                 Estado: {activeDraft.evolutionState.trajectory}
@@ -1079,18 +1143,18 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
           {/* Immediate Death Banner if iatrogenic fatality occurred */}
           {(activeDraft.immediateDeathAlert || isDeceased) && (
-            <div className="bg-rose-50 border border-rose-300 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-900">
+            <div className="bg-rose-950/75 border border-rose-700/70 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-200">
               <div className="flex items-center gap-2">
-                <Skull className="w-5 h-5 text-rose-700 shrink-0" />
+                <Skull className="w-5 h-5 text-rose-400 shrink-0" />
                 <span>
-                  <strong className="text-rose-950 uppercase">Fallecimiento Inmediato por Iatrogenia STAT:</strong>{' '}
+                  <strong className="text-rose-100 uppercase">Fallecimiento Inmediato por Iatrogenia STAT:</strong>{' '}
                   {activeDraft.immediateDeathAlert?.reason || 'Paro cardiorrespiratorio irreversible en monitoreo.'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => resolvePatient(activeCase, activeDraft)}
-                className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer transition-colors"
+                className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer transition-colors"
               >
                 Registrar Desenlace y Continuar
               </button>
@@ -1099,8 +1163,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
           {/* Already resolved notice when revisiting a completed bed */}
           {activeDraft.result && (
-            <div className="bg-[#E4F1E8] border border-[#72A98A] rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span className="text-[#1F4B3A]">
+            <div className="bg-[#163026] border border-[#3E8569] rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className="text-[#D7F0E3]">
                 <strong>Paciente ya resuelto:</strong> Obtuviste{' '}
                 <strong className="font-mono tabular-nums">{activeDraft.result.evaluation.totalScore}/100</strong> ({activeDraft.result.outcomeHeadline}).
               </span>
@@ -1108,14 +1172,14 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setAuditModalCaseId(activeCase.id)}
-                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#43866B] hover:bg-[#356D56] text-white font-semibold cursor-pointer transition-colors"
+                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] text-white font-semibold cursor-pointer transition-colors"
                 >
                   Ver Auditoría y Clase
                 </button>
                 <button
                   type="button"
                   onClick={handleGoToNextPendingPatient}
-                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white border border-[#E2EAE4] hover:bg-[#F8FBF9] text-[#263A32] font-semibold cursor-pointer transition-colors"
+                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#172621] border border-[#294037] hover:bg-[#1E312B] text-[#E8F2ED] font-semibold cursor-pointer transition-colors"
                 >
                   Ir a Pendientes
                 </button>
@@ -1128,13 +1192,13 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
             {/* COL 1: Interrogatorio Rápido + Examen Físico (4 cols) */}
             <div className="lg:col-span-4 space-y-4">
               {/* Motivo e Historia Breve */}
-              <div className="bg-white border border-[#E2EAE4] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+              <div className="bg-[#121E1A] border border-[#243830] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_4px_14px_rgba(0,0,0,0.28)]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[#263A32] flex items-center gap-1.5">
-                    <MessageSquare className="w-4 h-4 text-[#43866B]" />
+                  <span className="text-xs font-bold text-[#E8F2ED] flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-[#68C79F]" />
                     <span>1. Historia Express</span>
                   </span>
-                  <span className="text-[11px] font-mono tabular-nums text-[#55685F]">
+                  <span className="text-[11px] font-mono tabular-nums text-[#9FB5AA]">
                     {activeDraft.messages.filter((m) => m.sender === 'doctor').length} preguntas
                   </span>
                 </div>
@@ -1145,13 +1209,14 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   liveVitals={activeDraft.liveVitalSigns}
                   isDeceased={isDeceased}
                   variant="vignette"
+                  dark
                 />
 
-                <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg p-2.5 text-xs text-[#263A32] space-y-1">
+                <div className="bg-[#172621] border border-[#294037] rounded-lg p-2.5 text-xs text-[#E8F2ED] space-y-1">
                   <div>
-                    <strong className="text-[#43866B]">Motivo:</strong> {activeCase.patientInfo.consultReason}
+                    <strong className="text-[#68C79F]">Motivo:</strong> {activeCase.patientInfo.consultReason}
                   </div>
-                  <div className="text-[11px] text-[#55685F]">
+                  <div className="text-[11px] text-[#9FB5AA]">
                     <strong>Evolución:</strong> {activeCase.patientInfo.evolutionTime} · <strong>Ocupación:</strong> {activeCase.patientInfo.occupation}
                   </div>
                 </div>
@@ -1164,7 +1229,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                       type="button"
                       disabled={Boolean(activeDraft.result) || isDeceased}
                       onClick={() => handleAskQuestion(q.prompt)}
-                      className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#F8FBF9] hover:bg-[#E4F1E8] disabled:opacity-45 border border-[#E2EAE4] hover:border-[#72A98A] text-[11px] font-semibold text-[#263A32] cursor-pointer transition-colors"
+                      className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#172621] hover:bg-[#183329] disabled:opacity-45 border border-[#294037] hover:border-[#4CA07E] text-[11px] font-semibold text-[#E8F2ED] cursor-pointer transition-colors"
                     >
                       + {q.label}
                     </button>
@@ -1172,25 +1237,25 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 </div>
 
                 {/* Compact Dialogue Feed */}
-                <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg p-2.5 max-h-52 overflow-y-auto space-y-2">
+                <div className="bg-[#0F1916] border border-[#243830] rounded-lg p-2.5 max-h-52 overflow-y-auto space-y-2">
                   {activeDraft.messages.map((m) => (
                     <div
                       key={m.id}
                       className={`text-xs rounded-lg px-2.5 py-2 ${
                         m.sender === 'doctor'
-                          ? 'bg-[#43866B] text-white ml-4'
+                          ? 'bg-[#266953] text-white ml-4 border border-[#3C8B70]/50'
                           : m.sender === 'system'
-                          ? 'bg-amber-50 border border-amber-200 text-amber-900 text-[11px]'
-                          : 'bg-white border border-[#E2EAE4] text-[#263A32] mr-2'
+                          ? 'bg-amber-950/60 border border-amber-700/65 text-amber-200 text-[11px]'
+                          : 'bg-[#172621] border border-[#294037] text-[#E8F2ED] mr-2'
                       }`}
                     >
                       <span
                         className={`text-[10px] font-bold block mb-0.5 ${
                           m.sender === 'doctor'
-                            ? 'text-[#E4F1E8]'
+                            ? 'text-[#D7F0E3]'
                             : m.sender === 'system'
-                            ? 'text-amber-800'
-                            : 'text-[#43866B]'
+                            ? 'text-amber-300'
+                            : 'text-[#68C79F]'
                         }`}
                       >
                         {m.sender === 'doctor' ? 'Médico' : m.sender === 'system' ? 'Monitor STAT' : 'Paciente'} · {m.timestamp}
@@ -1202,15 +1267,15 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
                 {/* Disclosed Antecedentes Chips */}
                 {(disclosedBg.pathological || disclosedBg.allergies || disclosedBg.currentMedications) && (
-                  <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg p-2.5 text-[11px] text-[#263A32] space-y-1">
+                  <div className="bg-[#172621] border border-[#294037] rounded-lg p-2.5 text-[11px] text-[#E8F2ED] space-y-1">
                     {disclosedBg.pathological && (
-                      <div><strong className="text-[#43866B]">Patológicos:</strong> {activeCase.background.pathological.join(' · ')}</div>
+                      <div><strong className="text-[#68C79F]">Patológicos:</strong> {activeCase.background.pathological.join(' · ')}</div>
                     )}
                     {disclosedBg.currentMedications && (
-                      <div><strong className="text-[#43866B]">Fármacos:</strong> {activeCase.background.currentMedications.join(' · ')}</div>
+                      <div><strong className="text-[#68C79F]">Fármacos:</strong> {activeCase.background.currentMedications.join(' · ')}</div>
                     )}
                     {disclosedBg.allergies && (
-                      <div className="text-rose-800"><strong>Alergias:</strong> {activeCase.background.allergies.join(' · ')}</div>
+                      <div className="text-rose-300"><strong>Alergias:</strong> {activeCase.background.allergies.join(' · ')}</div>
                     )}
                   </div>
                 )}
@@ -1231,12 +1296,12 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                     disabled={Boolean(activeDraft.result) || isDeceased}
                     onChange={(e) => setCustomQuestion(e.target.value)}
                     placeholder="Pregunta puntual al paciente..."
-                    className="flex-1 min-w-0 bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg px-3 py-2 text-xs text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B]"
+                    className="flex-1 min-w-0 bg-[#172621] border border-[#294037] rounded-lg px-3 py-2 text-xs text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-[#52B78E]"
                   />
                   <button
                     type="submit"
                     disabled={!customQuestion.trim() || Boolean(activeDraft.result) || isDeceased}
-                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#43866B] hover:bg-[#356D56] disabled:opacity-45 text-white cursor-pointer transition-colors"
+                    className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] disabled:opacity-45 text-white cursor-pointer transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -1244,10 +1309,10 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               </div>
 
               {/* Exploración Física 1-Clic */}
-              <div className="bg-white border border-[#E2EAE4] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+              <div className="bg-[#121E1A] border border-[#243830] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_4px_14px_rgba(0,0,0,0.28)]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[#263A32] flex items-center gap-1.5">
-                    <Stethoscope className="w-4 h-4 text-[#43866B]" />
+                  <span className="text-xs font-bold text-[#E8F2ED] flex items-center gap-1.5">
+                    <Stethoscope className="w-4 h-4 text-[#68C79F]" />
                     <span>2. Examen Físico (1 clic)</span>
                   </span>
                   <button
@@ -1259,7 +1324,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                         unlockedExamIds: liveExams.map((e) => e.id),
                       }))
                     }
-                    className="px-2.5 py-1 rounded-md bg-[#E4F1E8] hover:bg-[#D4E8DA] border border-[#72A98A] text-[11px] font-semibold text-[#1F4B3A] cursor-pointer transition-colors"
+                    className="px-2.5 py-1 rounded-md bg-[#163026] hover:bg-[#1E3E31] border border-[#3E8569] text-[11px] font-semibold text-[#D7F0E3] cursor-pointer transition-colors"
                   >
                     Explorar Todo ({activeDraft.unlockedExamIds.length}/{liveExams.length})
                   </button>
@@ -1268,6 +1333,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 {/* System Filter */}
                 <HospitalSelect
                   variant="compact"
+                  dark
                   panelTitle="Filtrar por Sistema"
                   value={examSystemFilter}
                   onChange={setExamSystemFilter}
@@ -1290,17 +1356,17 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                         className={`rounded-lg border p-2.5 text-xs transition-colors ${
                           isUnlocked
                             ? pe.isAbnormal
-                              ? 'bg-amber-50/70 border-amber-300'
-                              : 'bg-[#F8FBF9] border-[#72A98A]'
-                            : 'bg-[#F8FBF9] border-[#E2EAE4] hover:border-[#72A98A]'
+                              ? 'bg-amber-950/45 border-amber-700/65'
+                              : 'bg-[#163026] border-[#3E8569]'
+                            : 'bg-[#172621] border-[#294037] hover:border-[#4CA07E]'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="text-[10px] font-semibold text-[#55685F] block">
+                            <span className="text-[10px] font-semibold text-[#9FB5AA] block">
                               {pe.system}
                             </span>
-                            <span className="font-semibold text-[#263A32] block truncate">{pe.name}</span>
+                            <span className="font-semibold text-[#E8F2ED] block truncate">{pe.name}</span>
                           </div>
                           {!isUnlocked && (
                             <button
@@ -1313,14 +1379,14 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                                     : [...prev.unlockedExamIds, pe.id],
                                 }))
                               }
-                              className="min-h-[34px] px-2.5 py-1 rounded-md bg-[#43866B] hover:bg-[#356D56] text-white text-[11px] font-semibold shrink-0 cursor-pointer transition-colors"
+                              className="min-h-[34px] px-2.5 py-1 rounded-md bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-[11px] font-semibold shrink-0 cursor-pointer transition-colors"
                             >
                               Examinar
                             </button>
                           )}
                         </div>
                         {isUnlocked && (
-                          <p className="text-[11px] text-[#263A32] mt-1.5 leading-snug border-t border-[#E2EAE4] pt-1.5">
+                          <p className="text-[11px] text-[#D7E8DF] mt-1.5 leading-snug border-t border-[#294037] pt-1.5">
                             {pe.finding}
                           </p>
                         )}
@@ -1334,13 +1400,13 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
             {/* COL 2: Estabilización STAT en Vivo + Paraclínicos Rápidos (4 cols) */}
             <div className="lg:col-span-4 space-y-4">
               {/* STAT Express Stabilization */}
-              <div className="bg-white border border-amber-300 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+              <div className="bg-[#121E1A] border border-amber-700/65 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_4px_14px_rgba(0,0,0,0.28)]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                    <Syringe className="w-4 h-4 text-amber-700" />
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Syringe className="w-4 h-4 text-amber-400" />
                     <span>3. Estabilización STAT en Vivo</span>
                   </span>
-                  <span className="text-[11px] font-mono tabular-nums text-[#55685F]">
+                  <span className="text-[11px] font-mono tabular-nums text-[#9FB5AA]">
                     Aplicadas: {activeDraft.statInterventions.length}
                   </span>
                 </div>
@@ -1354,7 +1420,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${
                         statCategoryFilter === cat
                           ? 'bg-amber-600 text-white'
-                          : 'bg-[#F8FBF9] text-[#55685F] border border-[#E2EAE4] hover:text-[#263A32]'
+                          : 'bg-[#172621] text-[#9FB5AA] border border-[#294037] hover:text-[#E8F2ED]'
                       }`}
                     >
                       {cat === 'Vía Aérea / O₂'
@@ -1387,10 +1453,10 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                           duration: preset.duration,
                         })
                       }
-                      className="px-2.5 py-2 rounded-lg bg-[#F8FBF9] hover:bg-amber-50 disabled:opacity-45 border border-[#E2EAE4] hover:border-amber-400 text-left cursor-pointer transition-colors"
+                      className="px-2.5 py-2 rounded-lg bg-[#172621] hover:bg-amber-950/60 disabled:opacity-45 border border-[#294037] hover:border-amber-600/80 text-left cursor-pointer transition-colors"
                     >
-                      <div className="text-[11px] font-bold text-[#263A32] truncate">{preset.label}</div>
-                      <div className="text-[10px] text-amber-800 truncate">{preset.dose} · {preset.route.split(' ')[0]}</div>
+                      <div className="text-[11px] font-bold text-[#E8F2ED] truncate">{preset.label}</div>
+                      <div className="text-[10px] text-amber-300 truncate">{preset.dose} · {preset.route.split(' ')[0]}</div>
                     </button>
                   ))}
                 </div>
@@ -1419,7 +1485,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                     onChange={(e) => setCustomStatDrug(e.target.value)}
                     disabled={Boolean(activeDraft.result) || isDeceased}
                     placeholder="Otro STAT (ej. Atropina)"
-                    className="col-span-6 bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg px-2.5 py-1.5 text-[11px] text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-amber-500"
+                    className="col-span-6 bg-[#172621] border border-[#294037] rounded-lg px-2.5 py-1.5 text-[11px] text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-amber-500"
                   />
                   <input
                     type="text"
@@ -1427,29 +1493,29 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                     onChange={(e) => setCustomStatDose(e.target.value)}
                     disabled={Boolean(activeDraft.result) || isDeceased}
                     placeholder="Dosis"
-                    className="col-span-3 bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg px-2 py-1.5 text-[11px] text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-amber-500"
+                    className="col-span-3 bg-[#172621] border border-[#294037] rounded-lg px-2 py-1.5 text-[11px] text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-amber-500"
                   />
                   <button
                     type="submit"
                     disabled={!customStatDrug.trim() || Boolean(activeDraft.result) || isDeceased}
-                    className="col-span-3 min-h-[34px] rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-45 text-white text-[11px] font-bold cursor-pointer transition-colors"
+                    className="col-span-3 min-h-[34px] rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-45 text-white text-[11px] font-bold cursor-pointer transition-colors"
                   >
                     Aplicar
                   </button>
                 </form>
 
                 {activeDraft.statInterventions.length > 0 && (
-                  <div className="space-y-1 max-h-24 overflow-y-auto pt-1.5 border-t border-[#E2EAE4]">
+                  <div className="space-y-1 max-h-24 overflow-y-auto pt-1.5 border-t border-[#243830]">
                     {activeDraft.statInterventions.map((st) => (
-                      <div key={st.id} className="text-[11px] bg-[#F8FBF9] rounded-md px-2.5 py-1.5 border border-[#E2EAE4] flex items-center justify-between gap-2">
-                        <span className="font-semibold text-[#263A32] truncate">{st.drug} ({st.dose})</span>
+                      <div key={st.id} className="text-[11px] bg-[#172621] rounded-md px-2.5 py-1.5 border border-[#294037] flex items-center justify-between gap-2">
+                        <span className="font-semibold text-[#E8F2ED] truncate">{st.drug} ({st.dose})</span>
                         <span
                           className={`text-[10px] font-bold shrink-0 ${
                             st.effectSeverity === 'mejoria'
-                              ? 'text-[#1B5E3F]'
+                              ? 'text-emerald-300'
                               : st.effectSeverity === 'reaccion_adversa'
-                              ? 'text-rose-700'
-                              : 'text-amber-800'
+                              ? 'text-rose-300'
+                              : 'text-amber-300'
                           }`}
                         >
                           {st.effectSeverity === 'mejoria'
@@ -1465,13 +1531,13 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
               </div>
 
               {/* Paraclínicos Rápidos */}
-              <div className="bg-white border border-[#E2EAE4] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+              <div className="bg-[#121E1A] border border-[#243830] rounded-xl p-3.5 sm:p-4 space-y-3 shadow-[0_4px_14px_rgba(0,0,0,0.28)]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[#263A32] flex items-center gap-1.5">
-                    <FlaskConical className="w-4 h-4 text-[#43866B]" />
+                  <span className="text-xs font-bold text-[#E8F2ED] flex items-center gap-1.5">
+                    <FlaskConical className="w-4 h-4 text-[#68C79F]" />
                     <span>4. Paraclínicos Rápidos</span>
                   </span>
-                  <span className="text-[11px] font-mono tabular-nums text-[#55685F]">
+                  <span className="text-[11px] font-mono tabular-nums text-[#9FB5AA]">
                     Solicitados: {activeDraft.unlockedStudyIds.length}
                   </span>
                 </div>
@@ -1484,8 +1550,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                       onClick={() => setStudyCategoryFilter(cat)}
                       className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${
                         studyCategoryFilter === cat
-                          ? 'bg-[#43866B] text-white'
-                          : 'bg-[#F8FBF9] text-[#55685F] border border-[#E2EAE4] hover:text-[#263A32]'
+                          ? 'bg-[#2F7A63] text-white'
+                          : 'bg-[#172621] text-[#9FB5AA] border border-[#294037] hover:text-[#E8F2ED]'
                       }`}
                     >
                       {cat === 'Gabinete y Trazados' ? 'ECG/Gabinete' : cat}
@@ -1494,13 +1560,13 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 </div>
 
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-[#718078] absolute left-2.5 top-2.5" />
+                  <Search className="w-3.5 h-3.5 text-[#7C9489] absolute left-2.5 top-2.5" />
                   <input
                     type="text"
                     value={studySearch}
                     onChange={(e) => setStudySearch(e.target.value)}
                     placeholder="Buscar estudio (BH, ECG, TAC, gaso...)"
-                    className="w-full bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg pl-8 pr-2.5 py-2 text-xs text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B]"
+                    className="w-full bg-[#172621] border border-[#294037] rounded-lg pl-8 pr-2.5 py-2 text-xs text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-[#52B78E]"
                   />
                 </div>
 
@@ -1515,17 +1581,17 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                         className={`rounded-lg border p-2.5 text-xs ${
                           isUnlocked
                             ? std.isAbnormal
-                              ? 'bg-amber-50/70 border-amber-300'
-                              : 'bg-[#F8FBF9] border-[#72A98A]'
-                            : 'bg-[#F8FBF9] border-[#E2EAE4] hover:border-[#72A98A]'
+                              ? 'bg-amber-950/45 border-amber-700/65'
+                              : 'bg-[#163026] border-[#3E8569]'
+                            : 'bg-[#172621] border-[#294037] hover:border-[#4CA07E]'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="text-[10px] font-semibold text-[#43866B] block">
+                            <span className="text-[10px] font-semibold text-[#68C79F] block">
                               {std.subcategory}
                             </span>
-                            <span className="font-semibold text-[#263A32] block leading-snug">{std.name}</span>
+                            <span className="font-semibold text-[#E8F2ED] block leading-snug">{std.name}</span>
                           </div>
                           {!isUnlocked && (
                             <button
@@ -1538,21 +1604,21 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                                     : [...prev.unlockedStudyIds, std.id],
                                 }))
                               }
-                              className="min-h-[34px] px-2.5 py-1 rounded-md bg-[#43866B] hover:bg-[#356D56] text-white text-[11px] font-semibold shrink-0 cursor-pointer transition-colors"
+                              className="min-h-[34px] px-2.5 py-1 rounded-md bg-[#2F7A63] hover:bg-[#3A8E74] text-white text-[11px] font-semibold shrink-0 cursor-pointer transition-colors"
                             >
                               Solicitar
                             </button>
                           )}
                         </div>
                         {isUnlocked && (
-                          <div className="mt-1.5 pt-1.5 border-t border-[#E2EAE4] space-y-1 text-[11px]">
-                            <p className="text-[#263A32] leading-snug">{std.result}</p>
+                          <div className="mt-1.5 pt-1.5 border-t border-[#294037] space-y-1 text-[11px]">
+                            <p className="text-[#D7E8DF] leading-snug">{std.result}</p>
                             {std.referenceRange && (
-                              <p className="text-[10px] text-[#55685F] font-mono">Ref: {std.referenceRange}</p>
+                              <p className="text-[10px] text-[#9FB5AA] font-mono">Ref: {std.referenceRange}</p>
                             )}
                             {hasTracing && (
                               <div className="pt-1">
-                                <StudyTracingViewer study={std} vitalSigns={activeDraft.liveVitalSigns} />
+                                <StudyTracingViewer study={std} vitalSigns={activeDraft.liveVitalSigns} dark />
                               </div>
                             )}
                           </div>
@@ -1572,19 +1638,19 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   if (!activeDraft.primaryDiagnosis.trim() || activeDraft.result) return;
                   resolvePatient(activeCase, activeDraft);
                 }}
-                className="bg-white border border-[#72A98A] rounded-xl p-4 sm:p-5 space-y-3.5 shadow-[0_2px_8px_rgba(67,134,107,0.08)]"
+                className="bg-[#121E1A] border border-[#3E8569] rounded-xl p-4 sm:p-5 space-y-3.5 shadow-[0_6px_20px_rgba(0,0,0,0.35)]"
               >
-                <div className="text-xs font-bold text-[#43866B] flex items-center gap-1.5">
-                  <Brain className="w-4 h-4 text-[#43866B]" />
+                <div className="text-xs font-bold text-[#68C79F] flex items-center gap-1.5">
+                  <Brain className="w-4 h-4 text-[#68C79F]" />
                   <span>5. Diagnóstico Express *</span>
                 </div>
 
-                <p className="text-xs text-[#55685F] leading-relaxed">
+                <p className="text-xs text-[#9FB5AA] leading-relaxed">
                   Escribe únicamente tu diagnóstico clínico principal y confirma para pasar al siguiente paciente. No necesitas llenar diferenciales, recetas ni criterios de ingreso/alta.
                 </p>
 
                 <div>
-                  <label className="text-xs font-semibold text-[#263A32] block mb-1.5">
+                  <label className="text-xs font-semibold text-[#E8F2ED] block mb-1.5">
                     Impresión Diagnóstica Principal *
                   </label>
                   <input
@@ -1598,7 +1664,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                       }))
                     }
                     placeholder="Ej. Apendicitis aguda / Dengue con signos de alarma..."
-                    className="w-full bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl px-3.5 py-2.5 text-sm text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#E4F1E8]"
+                    className="w-full bg-[#172621] border border-[#294037] rounded-xl px-3.5 py-2.5 text-sm text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-[#52B78E] focus:ring-2 focus:ring-[#2F7A63]/35"
                   />
                 </div>
 
@@ -1606,7 +1672,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   <button
                     type="submit"
                     disabled={!activeDraft.primaryDiagnosis.trim()}
-                    className="w-full min-h-[44px] py-3 rounded-xl bg-[#43866B] hover:bg-[#356D56] disabled:opacity-45 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
+                    className="w-full min-h-[44px] py-3 rounded-xl bg-[#2F7A63] hover:bg-[#3A8E74] disabled:opacity-45 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors"
                   >
                     <ShieldCheck className="w-4 h-4" />
                     <span>Confirmar Diagnóstico y Continuar</span>
@@ -1614,8 +1680,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   </button>
                 )}
 
-                <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-lg p-3 text-[11px] text-[#55685F] space-y-1">
-                  <div className="font-semibold text-[#263A32]">Al confirmar verás automáticamente:</div>
+                <div className="bg-[#172621] border border-[#294037] rounded-lg p-3 text-[11px] text-[#9FB5AA] space-y-1">
+                  <div className="font-semibold text-[#E8F2ED]">Al confirmar verás automáticamente:</div>
                   <p>· Exactitud diagnóstica y tiempo empleado</p>
                   <p>· Protocolo STAT + Tratamiento definitivo con días</p>
                   <p>· Auditoría completa y Clase Magistral para estudio</p>
@@ -1628,27 +1694,27 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
       {/* Full Clinical Audit & Masterclass Modal for any patient in the Turno */}
       {auditTarget && (
-        <div className="fixed inset-0 z-50 bg-[#16231D]/60 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
-          <div className="max-w-6xl mx-auto bg-[#F3F7F4] border border-[#E2EAE4] rounded-2xl shadow-2xl overflow-hidden">
-            <div className="sticky top-0 z-20 bg-white border-b border-[#E2EAE4] px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="fixed inset-0 z-50 bg-[#070E0C]/80 backdrop-blur-sm overflow-y-auto p-3 sm:p-6">
+          <div className="max-w-6xl mx-auto bg-[#F3F7F4] border border-[#294037] rounded-2xl shadow-2xl overflow-hidden">
+            <div className="sticky top-0 z-20 bg-[#121E1A] border-b border-[#243830] px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold text-[#43866B]">
+                <div className="text-xs font-semibold text-[#68C79F]">
                   Auditoría Clínica y Clase Magistral · Turno Médico
                 </div>
-                <div className="text-sm font-bold text-[#263A32]">
+                <div className="text-sm font-bold text-[#E8F2ED]">
                   {auditTarget.caseData.patientInfo.name} · {auditTarget.caseData.solution.correctDiagnosis}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setAuditModalCaseId(null)}
-                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#F8FBF9] hover:bg-[#E4F1E8] border border-[#E2EAE4] text-xs font-semibold text-[#263A32] flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#172621] hover:bg-[#1E312B] border border-[#294037] text-xs font-semibold text-[#E8F2ED] flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
                 <span>Cerrar Auditoría</span>
               </button>
             </div>
-            <div className="p-4 sm:p-6">
+            <div className="p-4 sm:p-6 text-[#263A32]">
               <ClinicalAuditTab
                 caseData={auditTarget.caseData}
                 evaluation={auditTarget.evaluation}

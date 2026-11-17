@@ -34,7 +34,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Episodio leve de arenillas renales hace 3 años sin seguimiento.', 'Sobrepeso leve.'],
       nonPathological: ['Baja ingesta hídrica (<1 L/día) y consumo frecuente de refrescos de cola y embutidos.'],
-      family: ['Padre con nefrolitiasis recurrente.'],
+      family: ['Madre con hipertensión arterial controlada; padre sano.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomó 1 tableta de diclofenaco hace 4 horas con alivio mínimo transitorio.'],
       allergies: ['Sin alergias conocidas.'],
@@ -197,7 +197,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Osteoporosis diagnosticada hace 8 años (abandono de tratamiento hace 2 años).', 'Hipertensión arterial crónica controlada.'],
       nonPathological: ['Vive sola en planta baja, usa bastón ocasionalmente. Niega tabaco y alcohol.'],
-      family: ['Madre con fractura de cadera a los 80 años.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Histerectomía hace 25 años.'],
       currentMedications: ['Losartán 50 mg VO cada 24 horas.'],
       allergies: ['Alergia a sulfas (exantema).'],
@@ -490,7 +490,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Trastorno por uso de alcohol severo de 12 años de evolución.', 'Gastritis erosiva reciente.'],
       nonPathological: ['Tabaquismo 10 cigarros/día. Suspendió alcohol de golpe hace 72 horas.'],
-      family: ['Padre con alcoholismo crónico.'],
+      family: ['Sin antecedentes heredofamiliares relevantes documentados.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Omeprazol 20 mg esporádico. Niega uso de benzodiacepinas previas.'],
       allergies: ['Sin alergias conocidas.'],
@@ -782,7 +782,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Cuadro viral respiratorio alto hace 10 días.', 'Sin cardiopatías previas conocidas.'],
       nonPathological: ['Niega tabaquismo o uso de sustancias.'],
-      family: ['Sin antecedentes cardiovasculares tempranos.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomó paracetamol hace 3 días por dolor torácico leve.'],
       allergies: ['Sin alergias conocidas.'],
@@ -916,7 +916,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Gastroenteritis aguda autolimitada hace 15 días tras comer pollo mal cocido.'],
       nonPathological: ['Niega alcohol, drogas, exposición a pesticidas o picaduras de garrapata.'],
-      family: ['Sin antecedentes neurológicos familiares.'],
+      family: ['Madre hipertensa controlada; padre sano.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1327,7 +1327,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Tiroiditis de Hashimoto diagnosticada hace 4 años (en tratamiento).', 'Pérdida ponderal involuntaria de 6 kg en 5 meses.'],
       nonPathological: ['Antojo marcado por sal y comidas muy saladas en los últimos meses. Niega tóxicos.'],
-      family: ['Hermana con vitíligo.'],
+      family: ['Padres aparentemente sanos.'],
       surgical: ['Apendicectomía hace 12 años (cicatriz muy pigmentada actualmente).'],
       currentMedications: ['Levotiroxina 75 mcg VO cada mañana (sin dosis recientes por vómitos).'],
       allergies: ['Sin alergias conocidas.'],
@@ -1709,7 +1709,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Infección viral respiratoria alta autolimitada hace 7 días.'],
       nonPathological: ['Deportista recreativa, no fuma, no usa anticonceptivos hormonales.'],
-      family: ['Sin cardiopatías familiares.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1852,7 +1852,7 @@ export const EXTRA_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Estreñimiento ocasional leve.'],
       nonPathological: ['Niega tabaco y alcohol.'],
-      family: ['Sin antecedentes neoplásicos conocidos.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia referidos.'],
       surgical: ['Laparotomía media supra-infraumbilical hace 10 años por peritonitis apendicular.'],
       currentMedications: ['Ninguno regular.'],
       allergies: ['Sin alergias conocidas.'],

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SavedCaseRecord, Specialty } from '../types/clinical';
+import { ClinicalCase, SavedCaseRecord, Specialty } from '../types/clinical';
+import { ALL_CURATED_CASES } from '../data/allCases';
 import {
   X,
   History,
@@ -12,6 +13,7 @@ import {
   TrendingUp,
   Layers,
   Target,
+  RotateCcw,
 } from 'lucide-react';
 
 interface CaseHistoryModalProps {
@@ -20,6 +22,8 @@ interface CaseHistoryModalProps {
   history: SavedCaseRecord[];
   onClearHistory: () => void;
   onReviewCase: (record: SavedCaseRecord) => void;
+  onRetryCase?: (record: SavedCaseRecord) => void;
+  customCases?: ClinicalCase[];
 }
 
 const SPECIALTY_LABELS: Record<Specialty, string> = {
@@ -75,6 +79,8 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
   history,
   onClearHistory,
   onReviewCase,
+  onRetryCase,
+  customCases = [],
 }) => {
   const [activeView, setActiveView] = useState<'list' | 'analytics'>('list');
   const modalBodyRef = useRef<HTMLDivElement>(null);
@@ -94,7 +100,15 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
 
   const excellentCount = history.filter((h) => h.score >= 90).length;
 
-  // Aggregate scores by specialty
+  const libraryBySpecialty = [...customCases, ...ALL_CURATED_CASES].reduce<
+    Record<string, Set<string>>
+  >((acc, c) => {
+    if (!acc[c.specialty]) acc[c.specialty] = new Set();
+    acc[c.specialty].add(c.id);
+    return acc;
+  }, {});
+
+  // Aggregate scores by specialty (including unique library coverage)
   const specialtyStats = Object.values(
     history.reduce<
       Record<
@@ -103,6 +117,7 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
           specialty: Specialty;
           label: string;
           count: number;
+          uniqueIds: Set<string>;
           total: number;
           best: number;
           latest: number;
@@ -115,21 +130,32 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
           specialty: key,
           label: SPECIALTY_LABELS[key] || key.replace('_', ' '),
           count: 0,
+          uniqueIds: new Set<string>(),
           total: 0,
           best: 0,
           latest: rec.score,
         };
       }
       acc[key].count += 1;
+      if (rec.caseId) acc[key].uniqueIds.add(rec.caseId);
       acc[key].total += rec.score;
       acc[key].best = Math.max(acc[key].best, rec.score);
       return acc;
     }, {})
   )
-    .map((item) => ({
-      ...item,
-      avg: Math.round(item.total / item.count),
-    }))
+    .map((item) => {
+      const librarySet = libraryBySpecialty[item.specialty];
+      const uniqueSolvedInLib = librarySet
+        ? Array.from(item.uniqueIds).filter((id) => librarySet.has(id)).length
+        : item.uniqueIds.size;
+      const libraryTotal = librarySet ? librarySet.size : item.uniqueIds.size;
+      return {
+        ...item,
+        uniqueSolved: uniqueSolvedInLib,
+        libraryTotal,
+        avg: Math.round(item.total / item.count),
+      };
+    })
     .sort((a, b) => b.avg - a.avg || b.count - a.count);
 
   const strongestSpecialty = specialtyStats.length > 0 ? specialtyStats[0] : null;
@@ -139,17 +165,32 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
   // Chronological progression (last 10 cases oldest -> newest)
   const recentChronological = [...history].slice(0, 10).reverse();
 
-  // Rubric competency averages (across all 7 categories)
+  // Rubric competency averages (differentialDiagnoses shown only when ECOE cases exist)
+  const hasEcoeHistory = history.some(
+    (h) => h.mode === 'examen' && !h.evaluation?.expressDiagnosticOnly && h.evaluation?.breakdown
+  );
+
   const rubricDomains = [
     { key: 'anamnesis' as const, label: 'Anamnesis', max: 15 },
     { key: 'physicalExam' as const, label: 'Examen Físico', max: 15 },
     { key: 'studiesInterpretation' as const, label: 'Estudios', max: 15 },
     { key: 'primaryDiagnosis' as const, label: 'Diagnóstico', max: 25 },
-    { key: 'differentialDiagnoses' as const, label: 'Diferenciales', max: 10 },
+    ...(hasEcoeHistory
+      ? [{ key: 'differentialDiagnoses' as const, label: 'Diferenciales (ECOE)', max: 10 }]
+      : []),
     { key: 'treatment' as const, label: 'Tratamiento', max: 15 },
     { key: 'safetyAndConduct' as const, label: 'Conducta/Seguridad', max: 5 },
   ].map((domain) => {
-    const validRecords = history.filter((h) => h.evaluation?.breakdown);
+    const validRecords = history.filter((h) => {
+      if (!h.evaluation?.breakdown) return false;
+      if (domain.key === 'differentialDiagnoses') {
+        return h.mode === 'examen' && !h.evaluation?.expressDiagnosticOnly;
+      }
+      if (domain.key === 'treatment' || domain.key === 'safetyAndConduct') {
+        return !h.evaluation?.expressDiagnosticOnly;
+      }
+      return true;
+    });
     if (validRecords.length === 0) {
       return { ...domain, avgScore: 0, pct: 0 };
     }
@@ -308,15 +349,31 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        onReviewCase(record);
-                        onClose();
-                      }}
-                      className="min-h-[40px] px-3.5 py-2 bg-[#43866B] hover:bg-[#356D56] text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-sm"
-                    >
-                      Ver Dictamen
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {onRetryCase && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRetryCase(record);
+                            onClose();
+                          }}
+                          className="min-h-[40px] px-3 py-2 bg-white hover:bg-[#E4F1E8] text-[#1F4B3A] border border-[#CFE4D6] hover:border-[#72A98A] rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                          <span>Reintentar</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onReviewCase(record);
+                          onClose();
+                        }}
+                        className="min-h-[40px] px-3.5 py-2 bg-[#43866B] hover:bg-[#356D56] text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-sm whitespace-nowrap"
+                      >
+                        Ver Dictamen
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -452,11 +509,12 @@ export const CaseHistoryModal: React.FC<CaseHistoryModalProps> = ({
                       key={spec.specialty}
                       className="bg-white border border-[#E2EAE4] rounded-lg p-3 space-y-1.5"
                     >
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <span className="font-bold text-[#263A32] truncate">{spec.label}</span>
-                          <span className="text-[10px] text-[#55685F] bg-[#F8FBF9] px-2 py-0.5 rounded border border-[#E2EAE4] shrink-0">
-                            {spec.count} {spec.count === 1 ? 'caso' : 'casos'}
+                          <span className="text-[11px] text-[#55685F] tabular-nums shrink-0">
+                            · {spec.uniqueSolved}/{spec.libraryTotal} resueltos
+                            {spec.count > spec.uniqueSolved ? ` (${spec.count} intentos)` : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0 font-mono tabular-nums">

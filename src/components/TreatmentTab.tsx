@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Pill, Plus, Trash2, Hospital, Stethoscope, AlertTriangle } from 'lucide-react';
-import { MedicationItem } from '../types/clinical';
+import { GameMode, MedicationItem } from '../types/clinical';
 import { HospitalSelect } from './HospitalSelect';
+import { MedicationSuggestion, searchMedicationSuggestions } from '../utils/medicationCatalog';
 
 interface TreatmentTabProps {
   medications: MedicationItem[];
@@ -16,6 +17,7 @@ interface TreatmentTabProps {
   setFollowUpPlan: (val: string) => void;
   onPendingDraftChange?: (draft?: MedicationItem) => void;
   isEcoeMode?: boolean;
+  gameMode?: GameMode;
 }
 
 export const TreatmentTab: React.FC<TreatmentTabProps> = ({
@@ -31,6 +33,7 @@ export const TreatmentTab: React.FC<TreatmentTabProps> = ({
   setFollowUpPlan,
   onPendingDraftChange,
   isEcoeMode = false,
+  gameMode = 'medico_general',
 }) => {
   const [newDrug, setNewDrug] = useState('');
   const [newDose, setNewDose] = useState('');
@@ -38,6 +41,31 @@ export const TreatmentTab: React.FC<TreatmentTabProps> = ({
   const [newFrequency, setNewFrequency] = useState('Cada 8 horas');
   const [newDuration, setNewDuration] = useState('7 días');
   const [newPhase, setNewPhase] = useState<'stat_urgencias' | 'ambulatorio_definitivo'>('ambulatorio_definitivo');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
+  const allowAutocomplete =
+    !isEcoeMode && (gameMode === 'principiante' || gameMode === 'medico_general');
+  const drugSuggestions = allowAutocomplete ? searchMedicationSuggestions(newDrug, 7) : [];
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const handleSelectSuggestion = (sug: MedicationSuggestion) => {
+    setNewDrug(sug.drug);
+    if (!newDose.trim()) setNewDose(sug.doseHint);
+    if (sug.routeHint) setNewRoute(sug.routeHint);
+    if (sug.frequencyHint) setNewFrequency(sug.frequencyHint);
+    if (sug.durationHint) setNewDuration(sug.durationHint);
+    setShowSuggestions(false);
+  };
 
   const handlePhaseChange = (phase: 'stat_urgencias' | 'ambulatorio_definitivo') => {
     setNewPhase(phase);
@@ -259,15 +287,50 @@ export const TreatmentTab: React.FC<TreatmentTabProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div>
-              <label className="text-[11px] font-medium text-[#55685F] block mb-1">Nombre del Medicamento *</label>
+            <div ref={autocompleteRef} className="relative">
+              <label className="text-[11px] font-medium text-[#55685F] block mb-1">
+                Nombre del Medicamento *
+              </label>
               <input
                 type="text"
                 value={newDrug}
-                onChange={(e) => setNewDrug(e.target.value)}
-                placeholder="Fármaco o solución..."
+                onFocus={() => allowAutocomplete && setShowSuggestions(true)}
+                onChange={(e) => {
+                  setNewDrug(e.target.value);
+                  if (allowAutocomplete) setShowSuggestions(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setShowSuggestions(false);
+                }}
+                placeholder={
+                  allowAutocomplete
+                    ? 'Escribe principio activo...'
+                    : 'Fármaco o solución...'
+                }
+                autoComplete="off"
                 className="w-full min-h-[40px] bg-white border border-[#E2EAE4] rounded-lg px-3 py-2 text-xs text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#E4F1E8]"
               />
+              {allowAutocomplete && showSuggestions && drugSuggestions.length > 0 && (
+                <div
+                  role="listbox"
+                  aria-label="Sugerencias de vademécum offline"
+                  className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-[#CFE4D6] rounded-xl shadow-lg max-h-56 overflow-y-auto py-1"
+                >
+                  {drugSuggestions.map((sug) => (
+                    <button
+                      key={sug.drug}
+                      type="button"
+                      onClick={() => handleSelectSuggestion(sug)}
+                      className="w-full text-left px-3 py-2 hover:bg-[#E4F1E8] transition-colors cursor-pointer border-b border-[#F3F7F4] last:border-b-0"
+                    >
+                      <div className="text-xs font-bold text-[#263A32]">{sug.drug}</div>
+                      <div className="text-[10px] text-[#55685F] truncate">
+                        Ref: {sug.doseHint} · {sug.routeHint} · {sug.frequencyHint}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>

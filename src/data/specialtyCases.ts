@@ -34,7 +34,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Colelitiasis documentada por ultrasonido hace 2 años.', 'Sobrepeso y dislipidemia mixta sin tratamiento regular.'],
       nonPathological: ['Ingesta ocasional de alcohol los fines de semana (ayer tomó 2 cervezas con cena copiosa).', 'Dieta rica en grasas.'],
-      family: ['Madre con diabetes mellitus tipo 2 y colelitiasis operada.'],
+      family: ['Padre con hipertensión arterial controlada.', 'Madre sana.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomó 1 sobre de sal de uvas en casa sin mejoría.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -194,7 +194,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Nacido a término (39 SDG), peso 3,200 g, sin hospitalizaciones previas.'],
       nonPathological: ['Asiste a guardería desde hace 2 meses. Hermano de 4 años con cuadro catarral hace 5 días. Esquema de vacunación al día para la edad.'],
-      family: ['Padre con rinitis alérgica leve.'],
+      family: ['Padres jóvenes aparentemente sanos.'],
       surgical: ['Ninguna.'],
       currentMedications: ['Lavados nasales con solución salina aplicados por la madre ayer.'],
       allergies: ['Sin alergias conocidas.'],
@@ -333,7 +333,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipertensión arterial crónica (12 años).', 'Artrosis de rodilla.'],
       nonPathological: ['Niega tabaquismo o alcoholismo. Consumió Naproxeno por automedicación durante los últimos 4 días tras episodio diarreico.'],
-      family: ['Hermana con enfermedad renal crónica.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia referidos.'],
       surgical: ['Histerectomía hace 14 años.'],
       currentMedications: ['Enalapril 20 mg/día', 'Hidroclorotiazida 25 mg/día', 'Naproxeno 500 mg c/8h los últimos 4 días'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -749,7 +749,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Neuralgia del trigémino diagnosticada hace 2 semanas.'],
       nonPathological: ['Niega viajes o picaduras recientes.'],
-      family: ['Madre con hipotiroidismo.'],
+      family: ['Sin antecedentes familiares relevantes referidos.'],
       surgical: ['Niega.'],
       currentMedications: ['Carbamazepina 200 mg cada 12 horas iniciada hace 14 días.'],
       allergies: ['Desconocía alergias previas hasta este episodio.'],
@@ -993,7 +993,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Esguince de tobillo derecho hace 10 días con reposo prolongado en cama.'],
       nonPathological: ['Vuelo intercontinental de 11 horas finalizado ayer por la noche.'],
-      family: ['Sin antecedentes trombóticos conocidos.'],
+      family: ['Padre hipertenso en control; madre sana.'],
       surgical: ['Niega.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -1131,7 +1131,7 @@ export const SPECIALTY_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Rinitis alérgica estacional leve.'],
       nonPathological: ['Sin otros antecedentes relevantes.'],
-      family: ['Madre asmática.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia.'],
       surgical: ['Ninguna.'],
       currentMedications: ['Ninguno.'],
       allergies: ['Sospecha previa de alergia leve a nueces/maní nunca estudiada.'],

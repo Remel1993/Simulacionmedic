@@ -23,13 +23,13 @@ interface NavbarProps {
   onOpenGuideModal: () => void;
   onOpenCalculatorsModal: () => void;
   onRestartCase: () => void;
-  onSelectMode: (mode: GameMode) => void;
-  currentMode: GameMode;
+  onSelectMode: (mode: GameMode | 'turno_medico') => void;
+  currentMode: GameMode | 'turno_medico';
   currentSpecialty: Specialty;
   historyCount: number;
 }
 
-const MODE_OPTIONS: Array<{ value: GameMode; label: string; description: string }> = [
+const MODE_OPTIONS: Array<{ value: GameMode | 'turno_medico'; label: string; description: string }> = [
   {
     value: 'principiante',
     label: 'Modo Principiante',
@@ -55,6 +55,11 @@ const MODE_OPTIONS: Array<{ value: GameMode; label: string; description: string 
     label: 'Modo Examen (ECOE)',
     description: 'Estación ciega de 12 min sin ayudas ni atajos.',
   },
+  {
+    value: 'turno_medico',
+    label: 'Modo Turno Médico (Express)',
+    description: 'Cola ágil de múltiples pacientes en una sola pantalla.',
+  },
 ];
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -73,28 +78,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems: Array<{
     key: NavSectionKey;
     label: string;
+    mobileLabel: string;
     icon: any;
     onClick: () => void;
     badge?: number;
   }> = [
-    { key: 'home', label: 'Inicio', icon: Home, onClick: onGoHome },
-    { key: 'cases', label: 'Casos', icon: FolderOpen, onClick: onOpenCasesLibrary },
+    { key: 'home', label: 'Inicio', mobileLabel: 'Inicio', icon: Home, onClick: onGoHome },
+    { key: 'cases', label: 'Casos', mobileLabel: 'Casos', icon: FolderOpen, onClick: onOpenCasesLibrary },
     {
       key: 'history',
       label: 'Resultados',
+      mobileLabel: 'Result.',
       icon: BarChart3,
       onClick: onOpenHistoryModal,
       badge: historyCount > 0 ? historyCount : undefined,
     },
-    { key: 'guides', label: 'Guías Clínicas', icon: BookOpen, onClick: onOpenGuideModal },
-    { key: 'calculators', label: 'Calculadoras', icon: Calculator, onClick: onOpenCalculatorsModal },
+    { key: 'guides', label: 'Guías Clínicas', mobileLabel: 'Guías', icon: BookOpen, onClick: onOpenGuideModal },
+    { key: 'calculators', label: 'Calculadoras', mobileLabel: 'Calc.', icon: Calculator, onClick: onOpenCalculatorsModal },
   ];
 
+  const isTurnoDark = activeView === 'turno_medico';
+
   return (
-    <header className="sticky top-0 z-40 w-full shadow-[0_2px_12px_rgba(23,78,62,0.16)] pt-[env(safe-area-inset-top)]">
-      {/* Top Hospital Emerald Bar */}
-      <div className="bg-gradient-to-r from-[#174E3E] via-[#266E58] to-[#3A846B] text-white border-b border-white/15">
-        <div className="max-w-7xl w-full mx-auto px-3 sm:px-5 py-2.5 md:py-0 md:h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
+    <header
+      className={`sticky top-0 z-40 w-full pt-[env(safe-area-inset-top)] ${
+        isTurnoDark ? 'shadow-[0_4px_16px_rgba(0,0,0,0.45)]' : 'shadow-[0_2px_12px_rgba(23,78,62,0.16)]'
+      }`}
+    >
+      {/* Top Hospital Emerald Bar (higher z-index so the Mode dropdown cleanly overlaps the sub-nav) */}
+      <div
+        className={`relative z-20 text-white border-b transition-colors duration-200 ${
+          isTurnoDark
+            ? 'bg-gradient-to-r from-[#0E2B22] via-[#133A2E] to-[#194A3B] border-[#243830]'
+            : 'bg-gradient-to-r from-[#174E3E] via-[#266E58] to-[#3A846B] border-white/15'
+        }`}
+      >
+        <div className="max-w-7xl w-full mx-auto px-3 sm:px-5 py-2 md:py-0 md:h-16 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
           {/* Top Row (Mobile) / Left (Desktop): Emblem + Title + Mobile Restart */}
           <div className="flex items-center justify-between gap-2 min-w-0">
             <button
@@ -123,7 +142,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   onClick={onRestartCase}
                   title="Reiniciar expediente actual"
                   aria-label="Reiniciar expediente actual"
-                  className="min-h-[36px] px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-[11.5px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
+                  className="min-h-[34px] px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-[11.5px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shrink-0"
                 >
                   <RefreshCw className="w-3.5 h-3.5 shrink-0" />
                   <span>Reiniciar</span>
@@ -137,10 +156,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <HospitalSelect
               variant="header"
               align="right"
+              dark={isTurnoDark}
               ariaLabel="Clasificación de simulación"
               panelTitle="Clasificación de Simulación"
               value={currentMode}
-              onChange={(val) => onSelectMode(val as GameMode)}
+              onChange={(val) => onSelectMode(val as GameMode | 'turno_medico')}
               options={MODE_OPTIONS}
               className="flex-1 min-w-0 md:flex-none md:w-56 lg:w-64"
             />
@@ -169,13 +189,13 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Main Horizontal Navigation Panel (Desktop md+) */}
+      {/* Slim Horizontal Navigation Bar (Mobile & Desktop) */}
       {activeView !== 'turno_medico' && (
         <nav
           aria-label="Navegación clínica principal"
-          className="hidden md:block bg-white/95 backdrop-blur-md border-b border-[#E2EAE4]"
+          className="relative z-10 bg-white/95 backdrop-blur-md border-b border-[#E2EAE4]"
         >
-          <div className="max-w-7xl w-full mx-auto px-5 h-12 flex items-center gap-1.5">
+          <div className="max-w-7xl w-full mx-auto px-1.5 py-1 md:py-0 md:px-5 md:h-12 grid grid-cols-5 md:flex md:items-center gap-1 md:gap-1.5">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.key;
@@ -185,17 +205,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   key={item.key}
                   type="button"
                   onClick={item.onClick}
-                  className={`relative h-9 px-3.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  title={item.label}
+                  aria-label={item.label}
+                  className={`relative h-[30px] md:h-9 px-1 md:px-3.5 rounded-lg md:rounded-xl flex items-center justify-center md:justify-start gap-1 md:gap-2 text-[10px] md:text-xs font-bold transition-colors cursor-pointer whitespace-nowrap min-w-0 ${
                     isActive
                       ? 'bg-[#E4F1E8] text-[#174E3E] border border-[#72A98A]/60'
                       : 'text-[#55685F] hover:text-[#263A32] hover:bg-[#F3F7F4] border border-transparent'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#2F7A63]' : 'text-[#55685F]'}`} />
-                  <span>{item.label}</span>
+                  <Icon className={`w-3.5 h-3.5 md:w-4 md:h-4 shrink-0 ${isActive ? 'text-[#2F7A63]' : 'text-[#55685F]'}`} />
+                  <span className="md:hidden truncate">{item.mobileLabel}</span>
+                  <span className="hidden md:inline">{item.label}</span>
                   {item.badge !== undefined && (
                     <span
-                      className={`min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-mono tabular-nums font-bold flex items-center justify-center ${
+                      className={`min-w-[14px] h-[14px] md:min-w-[18px] md:h-[18px] px-1 md:px-1.5 rounded-full text-[8.5px] md:text-[10px] font-mono tabular-nums font-bold flex items-center justify-center shrink-0 ${
                         isActive ? 'bg-[#2F7A63] text-white' : 'bg-[#E4F1E8] text-[#1F4B3A]'
                       }`}
                     >
@@ -209,81 +232,5 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
       )}
     </header>
-  );
-};
-
-interface BottomNavProps {
-  activeSection: NavSectionKey;
-  historyCount: number;
-  onGoHome: () => void;
-  onOpenCases: () => void;
-  onOpenHistory: () => void;
-  onOpenGuides: () => void;
-  onOpenCalculators: () => void;
-}
-
-export const MobileBottomNav: React.FC<BottomNavProps> = ({
-  activeSection,
-  historyCount,
-  onGoHome,
-  onOpenCases,
-  onOpenHistory,
-  onOpenGuides,
-  onOpenCalculators,
-}) => {
-  const items: Array<{
-    key: NavSectionKey;
-    label: string;
-    icon: any;
-    onClick: () => void;
-    badge?: number;
-  }> = [
-    { key: 'home', label: 'Inicio', icon: Home, onClick: onGoHome },
-    { key: 'cases', label: 'Casos', icon: FolderOpen, onClick: onOpenCases },
-    {
-      key: 'history',
-      label: 'Resultados',
-      icon: BarChart3,
-      onClick: onOpenHistory,
-      badge: historyCount > 0 ? historyCount : undefined,
-    },
-    { key: 'guides', label: 'Guías', icon: BookOpen, onClick: onOpenGuides },
-    { key: 'calculators', label: 'Calc.', icon: Calculator, onClick: onOpenCalculators },
-  ];
-
-  return (
-    <nav
-      aria-label="Navegación clínica principal móvil"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#E2EAE4] shadow-[0_-4px_16px_rgba(38,58,50,0.08)] grid grid-cols-5 px-1 pb-[env(safe-area-inset-bottom)]"
-    >
-      {items.map((item) => {
-        const Icon = item.icon;
-        const isActive = activeSection === item.key;
-
-        return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={item.onClick}
-            className={`relative min-h-[56px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors cursor-pointer ${
-              isActive ? 'text-[#1F5E4B] font-bold' : 'text-[#55685F] hover:text-[#263A32]'
-            }`}
-          >
-            <div className="relative">
-              <Icon className={`w-5 h-5 ${isActive ? 'text-[#2F7A63]' : 'text-[#55685F]'}`} />
-              {item.badge !== undefined && (
-                <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-[#43866B] text-white text-[9px] font-mono tabular-nums font-bold flex items-center justify-center">
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              )}
-            </div>
-            <span className="leading-tight">{item.label}</span>
-            {isActive && (
-              <span className="absolute bottom-0 left-3 right-3 h-[3px] rounded-t-full bg-[#2F7A63]" />
-            )}
-          </button>
-        );
-      })}
-    </nav>
   );
 };

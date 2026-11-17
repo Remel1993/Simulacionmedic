@@ -8,8 +8,6 @@ interface DiagnosticTabProps {
   setDifferentialDiagnoses: (val: string[]) => void;
   clinicalJustification: string;
   setClinicalJustification: (val: string) => void;
-  additionalStudiesNeeded: string;
-  setAdditionalStudiesNeeded: (val: string) => void;
   isEcoeMode?: boolean;
 }
 
@@ -20,8 +18,6 @@ export const DiagnosticTab: React.FC<DiagnosticTabProps> = ({
   setDifferentialDiagnoses,
   clinicalJustification,
   setClinicalJustification,
-  additionalStudiesNeeded,
-  setAdditionalStudiesNeeded,
   isEcoeMode = false,
 }) => {
   const [newDiffText, setNewDiffText] = useState('');
@@ -39,8 +35,7 @@ export const DiagnosticTab: React.FC<DiagnosticTabProps> = ({
 
   const isFormComplete =
     primaryDiagnosis.trim().length > 3 &&
-    (!isEcoeMode || differentialDiagnoses.length >= 1) &&
-    clinicalJustification.trim().length > 10;
+    (!isEcoeMode || (differentialDiagnoses.length >= 1 && clinicalJustification.trim().length > 10));
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -65,7 +60,9 @@ export const DiagnosticTab: React.FC<DiagnosticTabProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="text-xs font-bold text-[#43866B] flex items-center gap-1.5">
               <Target className="w-4 h-4 shrink-0" />
-              <span>1. Diagnóstico Principal Presuntivo o Definitivo *</span>
+              <span>
+                {isEcoeMode ? '1. ' : ''}Diagnóstico Principal Presuntivo o Definitivo *
+              </span>
             </label>
             <span className="text-xs text-[#55685F] font-semibold tabular-nums">Puntaje: 25 pts</span>
           </div>
@@ -139,40 +136,24 @@ export const DiagnosticTab: React.FC<DiagnosticTabProps> = ({
           </div>
         )}
 
-        {/* Justificación Clínica & Razonamiento */}
-        <div className="bg-white border border-[#E2EAE4] rounded-2xl p-4 sm:p-5 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
-          <label className="text-xs font-bold text-[#263A32] block">
-            {isEcoeMode ? '3.' : '2.'} Justificación Clínica y Razonamiento Fisiopatológico *
-          </label>
-          <textarea
-            rows={4}
-            value={clinicalJustification}
-            onChange={(e) => setClinicalJustification(e.target.value)}
-            placeholder={
-              isEcoeMode
-                ? 'Fundamente su razonamiento clínico integrando los hallazgos del interrogatorio, signos y maniobras del examen físico, paraclínicos y la fisiopatología que descarta los diagnósticos diferenciales...'
-                : 'Fundamente su razonamiento clínico integrando los hallazgos del interrogatorio, signos y maniobras del examen físico, paraclínicos y fisiopatología del diagnóstico principal...'
-            }
-            className="w-full bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-3.5 text-xs sm:text-sm text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#E4F1E8]"
-          />
-          <p className="text-xs text-[#718078] italic">
-            El tribunal evaluará la calidad analítica de su razonamiento, no solo la coincidencia del nombre del diagnóstico.
-          </p>
-        </div>
-
-        {/* Estudios Adicionales */}
-        <div className="bg-white border border-[#E2EAE4] rounded-2xl p-4 sm:p-5 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
-          <label className="text-xs font-bold text-[#263A32] block">
-            {isEcoeMode ? '4.' : '3.'} Estudios Adicionales de Monitoreo o Confirmación (Opcional)
-          </label>
-          <textarea
-            rows={2}
-            value={additionalStudiesNeeded}
-            onChange={(e) => setAdditionalStudiesNeeded(e.target.value)}
-            placeholder="Indique paraclínicos de seguimiento o estudios de extensión que solicitaría a continuación..."
-            className="w-full bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-3.5 text-xs sm:text-sm text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#E4F1E8]"
-          />
-        </div>
+        {/* Justificación Clínica & Razonamiento (Solo en Modo ECOE) */}
+        {isEcoeMode && (
+          <div className="bg-white border border-[#E2EAE4] rounded-2xl p-4 sm:p-5 space-y-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]">
+            <label className="text-xs font-bold text-[#263A32] block">
+              3. Justificación Clínica y Razonamiento Fisiopatológico *
+            </label>
+            <textarea
+              rows={4}
+              value={clinicalJustification}
+              onChange={(e) => setClinicalJustification(e.target.value)}
+              placeholder="Fundamente su razonamiento clínico integrando los hallazgos del interrogatorio, signos y maniobras del examen físico, paraclínicos y la fisiopatología que descarta los diagnósticos diferenciales..."
+              className="w-full bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-3.5 text-xs sm:text-sm text-[#263A32] placeholder-[#718078] focus:outline-none focus:border-[#43866B] focus:ring-2 focus:ring-[#E4F1E8]"
+            />
+            <p className="text-xs text-[#718078] italic">
+              El tribunal evaluará la calidad analítica de su razonamiento, no solo la coincidencia del nombre del diagnóstico.
+            </p>
+          </div>
+        )}
 
         {/* Completion Hint */}
         {!isFormComplete && (
@@ -181,7 +162,7 @@ export const DiagnosticTab: React.FC<DiagnosticTabProps> = ({
             <span>
               {isEcoeMode
                 ? 'Complete el diagnóstico principal, al menos 1 diferencial y la justificación para avanzar.'
-                : 'Complete el diagnóstico principal y la justificación clínica para avanzar.'}
+                : 'Complete el diagnóstico principal para avanzar.'}
             </span>
           </div>
         )}

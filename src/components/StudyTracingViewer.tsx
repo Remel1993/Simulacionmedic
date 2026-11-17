@@ -5,6 +5,7 @@ import { Activity, Maximize2, Minimize2, Sun, Moon, Ruler } from 'lucide-react';
 interface StudyTracingViewerProps {
   study: ComplementaryStudy;
   vitalSigns?: VitalSigns;
+  dark?: boolean;
 }
 
 type TracingKind =
@@ -62,7 +63,14 @@ interface EcgProfile {
   isAFib: boolean;
   isParoxysmalMix: boolean;
   isSVT: boolean;
+  isVT: boolean;
   isCompleteAVBlock: boolean;
+  isFirstDegAVBlock: boolean;
+  isMobitz1: boolean;
+  isMobitz2: boolean;
+  isRBBB: boolean;
+  isLBBB: boolean;
+  isLAFB: boolean;
   isAnteriorSTEMI: boolean;
   isExtensiveAnterior: boolean;
   isInferiorSTEMI: boolean;
@@ -103,7 +111,14 @@ export function parseEcgProfile(study: ComplementaryStudy, vitalSigns?: VitalSig
       isAFib: false,
       isParoxysmalMix: false,
       isSVT: false,
+      isVT: false,
       isCompleteAVBlock: false,
+      isFirstDegAVBlock: false,
+      isMobitz1: false,
+      isMobitz2: false,
+      isRBBB: false,
+      isLBBB: false,
+      isLAFB: false,
       isAnteriorSTEMI: false,
       isExtensiveAnterior: false,
       isInferiorSTEMI: false,
@@ -138,17 +153,31 @@ export function parseEcgProfile(study: ComplementaryStudy, vitalSigns?: VitalSig
     isParoxysmalMix ||
     /fibrilatori|r-r\s+completamente\s+irregulares|irregularmente\s+irregulares|fibrilacion\s+auricular/.test(txtNoNeg);
 
-  const isSVT = !isAFib && /taquicardia\s+supraventricular|\btpsv\b|reentrada\s+nodal/.test(txtNoNeg);
-  const isCompleteAVBlock = /bloqueo\s+av\s+(?:completo|de\s+tercer\s+grado)|disociacion\s+av/.test(txtNoNeg);
+  const isVT =
+    !isAFib &&
+    (/taquicardia\s+ventricular|monomorfica\s+sostenida/.test(txtNoNeg) ||
+      (/complejos?\s+qrs\s+anchos?/.test(txtNoNeg) && hr >= 120));
+  const isSVT = !isAFib && !isVT && /taquicardia\s+supraventricular|\btpsv\b|\btsvp\b|reentrada\s+nodal|flutter\s+auricular/.test(txtNoNeg);
+  const isCompleteAVBlock = !isVT && /bloqueo\s+av\s+(?:completo|de\s+tercer\s+grado)|disociacion\s+av/.test(txtNoNeg);
+  const isMobitz1 = !isCompleteAVBlock && /mobitz\s*(?:i|1)\b|wenckebach|alargamiento\s+progresivo\s+del\s+(?:intervalo\s+)?pr/.test(txtNoNeg);
+  const isMobitz2 = !isCompleteAVBlock && !isMobitz1 && /mobitz\s*(?:ii|2)\b|ondas?\s+p\s+bloqueadas?\s+(?:intermitentes|sin\s+alargamiento)/.test(txtNoNeg);
+  const isFirstDegAVBlock =
+    !isCompleteAVBlock &&
+    !isMobitz1 &&
+    !isMobitz2 &&
+    /bloqueo\s+(?:av|auriculoventricular)\s+(?:de\s+)?(?:primer|1\.?\s*er)\s+grado|pr\s+prolongado/.test(txtNoNeg);
+  const isRBBB = !isVT && /bloqueo\s+(?:completo\s+)?de\s+rama\s+derecha|\bbrdhh\b|patron\s+rsr|orejas\s+de\s+conejo/.test(txtNoNeg);
+  const isLBBB = !isVT && !isRBBB && /bloqueo\s+(?:completo\s+)?de\s+rama\s+izquierda|\bbrihh\b|r\s+ancha\s+y\s+mellada/.test(txtNoNeg);
+  const isLAFB = !isVT && /hemibloqueo\s+(?:fascicular\s+)?anterior\s+izquierdo|bloqueo\s+bifascicular|eje[^.,;]*-60/.test(txtNoNeg);
 
   const isPericarditis =
     /silla de montar|concava[^.,;]*st|descenso del segmento pr|elevacion difusa/.test(txtNoNeg);
 
   const isAnteriorSTEMI =
     !isPericarditis &&
-    (/(?:elevacion|supradesnivel)[^.,;]*st[^.,;]*(?:v1|v2|v3|v4|cara anterior|anteroseptal|extens)/.test(txtNoNeg) ||
-      /(?:v1|v2|v3|v4|cara anterior)[^.,;]*(?:elevacion|supradesnivel)/.test(txtNoNeg) ||
-      /iamcest\s+anterior/.test(txtNoNeg));
+    (/(?:elevacion|supradesnivel)[^.,;]*st[^.,;]*(?:v1|v2|v3|v4|cara anterior|anteroseptal|extens|apical|precordial)/.test(txtNoNeg) ||
+      /(?:v1|v2|v3|v4|cara anterior|precordiales)[^.,;]*(?:elevacion|supradesnivel)/.test(txtNoNeg) ||
+      /iamcest\s+anterior|takotsubo/.test(txtNoNeg));
 
   const isExtensiveAnterior = isAnteriorSTEMI && /(?:v5|v6|extens)/.test(txtNoNeg);
 
@@ -192,13 +221,23 @@ export function parseEcgProfile(study: ComplementaryStudy, vitalSigns?: VitalSig
     txtNoNeg
   );
 
+  const qtcValMatch = txtNoNeg.match(/qtc\s*(?:de|:)?\s*(\d{3})\s*ms/);
+  const qtcMs = qtcValMatch ? parseInt(qtcValMatch[1], 10) : 0;
+
   return {
     hr,
     isAsystole: false,
     isAFib,
     isParoxysmalMix,
     isSVT,
+    isVT,
     isCompleteAVBlock,
+    isFirstDegAVBlock,
+    isMobitz1,
+    isMobitz2,
+    isRBBB,
+    isLBBB,
+    isLAFB,
     isAnteriorSTEMI,
     isExtensiveAnterior,
     isInferiorSTEMI,
@@ -212,7 +251,7 @@ export function parseEcgProfile(study: ComplementaryStudy, vitalSigns?: VitalSig
     invertedTLeads,
     isLVH,
     isAlternans: /bajo voltaje|alternancia electrica/.test(txtNoNeg),
-    isLongQT: /qtc[^.,;]*prolongado|465 ms|470 ms|480 ms|490 ms|500 ms/.test(txtNoNeg),
+    isLongQT: /qtc[^.,;]*(?:prolongado|largo)/.test(txtNoNeg) || qtcMs >= 465,
     isFlatT: /onda\s*t[^.,;]*aplanada/.test(txtNoNeg) && !hasInvertedTMention,
   };
 }
@@ -255,9 +294,17 @@ function sampleEcgLeadMv(
   const base = { ...leadScale[lead] };
   let stShift = 0;
   let prShift = 0;
-  const tCenter = p.isLongQT ? 0.38 : 0.31;
+  const tCenterBase = p.isLongQT ? 0.38 : 0.31;
   const tSigma = p.isPeakedT ? 0.022 : 0.046;
-  const qrsWidth = p.isPeakedT || p.isCompleteAVBlock ? 1.25 : 1.0;
+  const qrsWidth = p.isVT
+    ? 1.85
+    : p.isLBBB
+      ? 1.56
+      : p.isRBBB
+        ? 1.48
+        : p.isPeakedT || p.isCompleteAVBlock || p.isMobitz2
+          ? 1.25
+          : 1.0;
   const prOffset = p.isPeakedT ? -0.032 : 0;
 
   if (p.isAlternans) {
@@ -370,8 +417,61 @@ function sampleEcgLeadMv(
     base.tAmp *= 0.24;
   }
 
-  const rCenter = 0.18;
-  const pCenter = 0.07 + prOffset;
+  // Bundle Branch & Fascicular Blocks
+  if (p.isLAFB) {
+    if (lead === 'DI' || lead === 'aVL') {
+      base.qAmp = -0.14;
+      base.rAmp = 1.15;
+    } else if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') {
+      base.rAmp = 0.22;
+      base.sAmp = -0.9;
+    }
+  }
+
+  let rPrimeAmp = 0;
+  if (p.isRBBB) {
+    if (lead === 'V1' || lead === 'V2') {
+      base.qAmp = 0;
+      base.rAmp = 0.28;
+      base.sAmp = -0.26;
+      rPrimeAmp = 0.78;
+      base.tAmp = -0.24;
+    } else if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') {
+      base.sAmp = -0.48;
+    }
+  }
+
+  if (p.isLBBB) {
+    if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') {
+      base.qAmp = 0;
+      base.rAmp = 0.96;
+      base.sAmp = 0;
+      rPrimeAmp = 0.74;
+      stShift = -0.12;
+      base.tAmp = -0.28;
+    } else if (lead === 'V1' || lead === 'V2' || lead === 'V3') {
+      base.qAmp = 0;
+      base.rAmp = 0.08;
+      base.sAmp = -1.25;
+      base.tAmp = 0.26;
+    }
+  }
+
+  const mobitzCycle = beatIndex % 4;
+  const droppedQrs = (p.isMobitz1 || p.isMobitz2) && mobitzCycle === 3;
+  const avConductionDelay = p.isFirstDegAVBlock
+    ? 0.085
+    : p.isMobitz1
+      ? mobitzCycle === 1
+        ? 0.045
+        : mobitzCycle === 2
+          ? 0.095
+          : 0
+      : 0;
+
+  const pCenter = (p.isFirstDegAVBlock ? 0.055 : 0.07) + prOffset;
+  const rCenter = 0.18 + avConductionDelay;
+  const tCenter = tCenterBase + avConductionDelay;
 
   let v = 0;
 
@@ -380,17 +480,26 @@ function sampleEcgLeadMv(
     v +=
       0.038 * Math.sin(2 * Math.PI * 6.5 * (phaseSec + beatIndex * 0.17)) +
       0.026 * Math.cos(2 * Math.PI * 9.2 * (phaseSec + beatIndex * 0.31));
-  } else if (!omitPWave && !p.isSVT) {
+  } else if (!omitPWave && !p.isSVT && !p.isVT) {
     v += base.pAmp * gaussian(phaseSec, pCenter, 0.019);
     if (prShift !== 0 && phaseSec > pCenter + 0.015 && phaseSec < rCenter - 0.025) {
       v += prShift;
     }
   }
+  if (droppedQrs) {
+    return v;
+  }
+  if (p.isVT) {
+    base.tAmp = -0.36;
+  }
 
-  // QRS complex
+  // QRS complex (including rsR' for RBBB or broad notched R for LBBB)
   v += base.qAmp * gaussian(phaseSec, rCenter - 0.022 * qrsWidth, 0.008 * qrsWidth);
-  v += base.rAmp * gaussian(phaseSec, rCenter, 0.011 * qrsWidth);
-  v += base.sAmp * gaussian(phaseSec, rCenter + 0.022 * qrsWidth, 0.009 * qrsWidth);
+  v += base.rAmp * gaussian(phaseSec, rCenter - (rPrimeAmp > 0 ? 0.014 : 0), 0.011 * qrsWidth);
+  v += base.sAmp * gaussian(phaseSec, rCenter + (p.isRBBB && (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') ? 0.03 : 0.022 * qrsWidth), (p.isRBBB ? 0.014 : 0.009) * qrsWidth);
+  if (rPrimeAmp > 0) {
+    v += rPrimeAmp * gaussian(phaseSec, rCenter + 0.022, 0.013 * qrsWidth);
+  }
 
   // ST segment shift (convex dome for STEMI, concave for pericarditis, horizontal/downsloping for depression)
   if (stShift !== 0) {
@@ -482,7 +591,7 @@ function buildLeadPolylinePoints(
     let mv = 0;
     for (let b = 0; b < beatStarts.length; b++) {
       const localT = t - beatStarts[b] + 0.18;
-      if (localT >= 0 && localT <= 0.56) {
+      if (localT >= 0 && localT <= 0.68) {
         mv += sampleEcgLeadMv(localT, b, lead, profile, profile.isCompleteAVBlock);
       }
     }
@@ -502,9 +611,10 @@ function buildLeadPolylinePoints(
 const EcgTwelveLeadViewer: React.FC<{
   study: ComplementaryStudy;
   vitalSigns?: VitalSigns;
-}> = ({ study, vitalSigns }) => {
+  dark?: boolean;
+}> = ({ study, vitalSigns, dark = false }) => {
   const profile = useMemo(() => parseEcgProfile(study, vitalSigns), [study, vitalSigns]);
-  const [darkMonitor, setDarkMonitor] = useState(false);
+  const [darkMonitor, setDarkMonitor] = useState(dark);
   const [showBaselineGuides, setShowBaselineGuides] = useState(true);
   const [zoomLead, setZoomLead] = useState<LeadName | null>(null);
 
@@ -529,17 +639,17 @@ const EcgTwelveLeadViewer: React.FC<{
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex flex-wrap items-center gap-3 text-[#55685F] font-mono tabular-nums">
-          <span className="font-sans font-bold text-[#263A32] flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-[#43866B]" />
+        <div className={`flex flex-wrap items-center gap-3 font-mono tabular-nums ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
+          <span className={`font-sans font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+            <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
             Trazado Electrocardiográfico de 12 Derivaciones
           </span>
           {profile.isAsystole ? (
-            <span className="text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-300 px-2 py-0.5 rounded-md">
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${dark ? 'text-rose-200 bg-rose-950/70 border-rose-700/70' : 'text-rose-800 bg-rose-50 border-rose-300'}`}>
               25 mm/s · 10 mm/mV · FC 0 lpm (ASISTOLIA)
             </span>
           ) : (
-            <span className="text-[11px] text-[#55685F]">25 mm/s · 10 mm/mV · FC ~{profile.hr} lpm</span>
+            <span className={`text-[11px] ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>25 mm/s · 10 mm/mV · FC ~{profile.hr} lpm</span>
           )}
         </div>
 
@@ -548,7 +658,11 @@ const EcgTwelveLeadViewer: React.FC<{
             <button
               type="button"
               onClick={() => setZoomLead(null)}
-              className="min-h-[34px] px-2.5 py-1 rounded-lg bg-[#E4F1E8] border border-[#72A98A] text-[11px] font-semibold text-[#1F4B3A] hover:bg-[#D5E9DC] flex items-center gap-1 cursor-pointer"
+              className={`min-h-[34px] px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
+                dark
+                  ? 'bg-[#163026] border-[#3E8569] text-[#D7F0E3] hover:bg-[#1C3D30]'
+                  : 'bg-[#E4F1E8] border-[#72A98A] text-[#1F4B3A] hover:bg-[#D5E9DC]'
+              }`}
             >
               <Minimize2 className="w-3 h-3" />
               <span>Cerrar Zoom ({zoomLead})</span>
@@ -557,17 +671,25 @@ const EcgTwelveLeadViewer: React.FC<{
           <button
             type="button"
             onClick={() => setShowBaselineGuides((prev) => !prev)}
-            className="min-h-[34px] px-2.5 py-1 rounded-lg bg-white border border-[#E2EAE4] text-[11px] font-medium text-[#263A32] hover:border-[#72A98A] flex items-center gap-1.5 cursor-pointer"
+            className={`min-h-[34px] px-2.5 py-1 rounded-lg border text-[11px] font-medium flex items-center gap-1.5 cursor-pointer ${
+              dark
+                ? 'bg-[#172621] border-[#294037] text-[#E8F2ED] hover:border-[#4CA07E]'
+                : 'bg-white border-[#E2EAE4] text-[#263A32] hover:border-[#72A98A]'
+            }`}
           >
-            <Ruler className="w-3.5 h-3.5 text-[#43866B]" />
+            <Ruler className={`w-3.5 h-3.5 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
             <span>{showBaselineGuides ? 'Ocultar Línea TP' : 'Guía Isoeléctrica TP'}</span>
           </button>
           <button
             type="button"
             onClick={() => setDarkMonitor((prev) => !prev)}
-            className="min-h-[34px] px-2.5 py-1 rounded-lg bg-white border border-[#E2EAE4] text-[11px] font-medium text-[#263A32] hover:border-[#72A98A] flex items-center gap-1.5 cursor-pointer"
+            className={`min-h-[34px] px-2.5 py-1 rounded-lg border text-[11px] font-medium flex items-center gap-1.5 cursor-pointer ${
+              dark
+                ? 'bg-[#172621] border-[#294037] text-[#E8F2ED] hover:border-[#4CA07E]'
+                : 'bg-white border-[#E2EAE4] text-[#263A32] hover:border-[#72A98A]'
+            }`}
           >
-            {darkMonitor ? <Sun className="w-3.5 h-3.5 text-amber-600" /> : <Moon className="w-3.5 h-3.5 text-[#43866B]" />}
+            {darkMonitor ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className={`w-3.5 h-3.5 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />}
             <span>{darkMonitor ? 'Papel Milimetrado' : 'Monitor Oscuro'}</span>
           </button>
         </div>
@@ -575,12 +697,12 @@ const EcgTwelveLeadViewer: React.FC<{
 
       {/* Zoomed Single Lead Inspector */}
       {zoomLead && (
-        <div className="rounded-xl overflow-hidden border border-[#72A98A] shadow-sm">
-          <div className="px-3 py-1.5 bg-[#F8FBF9] border-b border-[#E2EAE4] flex flex-wrap items-center justify-between gap-2 text-[11px]">
-            <span className="font-bold text-[#1F4B3A]">
+        <div className={`rounded-xl overflow-hidden border shadow-sm ${dark ? 'border-[#3E8569]' : 'border-[#72A98A]'}`}>
+          <div className={`px-3 py-1.5 border-b flex flex-wrap items-center justify-between gap-2 text-[11px] ${dark ? 'bg-[#172621] border-[#243830]' : 'bg-[#F8FBF9] border-[#E2EAE4]'}`}>
+            <span className={`font-bold ${dark ? 'text-[#68C79F]' : 'text-[#1F4B3A]'}`}>
               Derivación Ampliada: {zoomLead} (25 mm/s · 10 mm/mV)
             </span>
-            <div className="flex items-center gap-3 text-[#55685F] font-mono">
+            <div className={`flex items-center gap-3 font-mono ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
               {Math.abs(zoomStShift) >= 0.08 && (
                 <span>
                   Desnivel J-ST: {zoomStShift > 0 ? '+' : ''}
@@ -636,7 +758,7 @@ const EcgTwelveLeadViewer: React.FC<{
       )}
 
       {/* Main 12-Lead Standard ECG Sheet */}
-      <div className="rounded-xl overflow-x-auto border border-[#E2EAE4] shadow-xs">
+      <div className={`rounded-xl overflow-x-auto border shadow-xs ${dark ? 'border-[#294037]' : 'border-[#E2EAE4]'}`}>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[680px] h-auto block" style={{ background: gridBg }}>
           <defs>
             <pattern id="ecg-minor" width="4" height="4" patternUnits="userSpaceOnUse">
@@ -764,8 +886,8 @@ const EcgTwelveLeadViewer: React.FC<{
           </text>
         </svg>
       </div>
-      <div className="flex items-center justify-end text-[11px] text-[#55685F] gap-1">
-        <Maximize2 className="w-3 h-3 text-[#43866B]" />
+      <div className={`flex items-center justify-end text-[11px] gap-1 ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
+        <Maximize2 className={`w-3 h-3 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
         <span>Haga clic sobre cualquier derivación (DI–V6) para medir amplitudes y segmento ST ampliados</span>
       </div>
     </div>
@@ -774,9 +896,10 @@ const EcgTwelveLeadViewer: React.FC<{
 
 // ---------- HOLTER 24H ECG VIEWER (HR TREND + 3-CHANNEL STRIP) ----------
 
-const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSigns }> = ({
+const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSigns; dark?: boolean }> = ({
   study,
   vitalSigns,
+  dark = false,
 }) => {
   const txt = norm(`${study.result} ${study.interpretation || ''}`);
   const txtNoNeg = stripMedicalNegations(txt);
@@ -815,7 +938,14 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
     isAFib: isAFib && !isParoxysmal ? true : false,
     isParoxysmalMix: false,
     isSVT: false,
+    isVT: false,
     isCompleteAVBlock: false,
+    isFirstDegAVBlock: false,
+    isMobitz1: /mobitz\s*(?:i|1)\b|wenckebach/.test(txtNoNeg),
+    isMobitz2: /mobitz\s*(?:ii|2)\b/.test(txtNoNeg),
+    isRBBB: false,
+    isLBBB: false,
+    isLAFB: false,
     isAnteriorSTEMI: false,
     isExtensiveAnterior: false,
     isInferiorSTEMI: false,
@@ -907,11 +1037,11 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-bold text-[#263A32] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#43866B]" />
+        <span className={`font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+          <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
           Monitoreo Holter ECG 24 Horas (Tira de Evento + Tendencia FC)
         </span>
-        <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono tabular-nums text-[#55685F] font-semibold">
+        <div className={`flex flex-wrap items-center gap-3 text-[11px] font-mono tabular-nums font-semibold ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
           <span>FC Mín: {minHr} lpm</span>
           <span>Media: {meanHr} lpm</span>
           <span>Máx: {maxHr} lpm</span>
@@ -1003,9 +1133,10 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
 
 // ---------- HOLTER DE PRESIÓN ARTERIAL / MAPA 24H VIEWER ----------
 
-const HolterBpViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSigns }> = ({
+const HolterBpViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSigns; dark?: boolean }> = ({
   study,
   vitalSigns,
+  dark = false,
 }) => {
   const txt = norm(`${study.result} ${study.interpretation || ''}`);
 
@@ -1067,18 +1198,18 @@ const HolterBpViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSi
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-bold text-[#263A32] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#43866B]" />
+        <span className={`font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+          <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
           Monitoreo Ambulatorio de Presión Arterial (MAPA / Holter de PA 24 Horas)
         </span>
         <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium">
-          <span className="flex items-center gap-1 text-rose-700">
+          <span className={`flex items-center gap-1 ${dark ? 'text-rose-300' : 'text-rose-700'}`}>
             <span className="w-2.5 h-2.5 rounded-full bg-rose-600 inline-block" /> Sistólica (PAS)
           </span>
-          <span className="flex items-center gap-1 text-sky-700">
+          <span className={`flex items-center gap-1 ${dark ? 'text-sky-300' : 'text-sky-700'}`}>
             <span className="w-2.5 h-2.5 rounded-full bg-sky-600 inline-block" /> Diastólica (PAD)
           </span>
-          <span className="flex items-center gap-1 text-amber-800">
+          <span className={`flex items-center gap-1 ${dark ? 'text-amber-300' : 'text-amber-800'}`}>
             <span className="w-3 h-0.5 border-t border-dashed border-amber-600 inline-block" /> Límite 135/85
           </span>
         </div>
@@ -1171,7 +1302,7 @@ const HolterBpViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalSi
 
 // ---------- SPIROMETRY FLOW-VOLUME & VOLUME-TIME VIEWER ----------
 
-const SpirometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) => {
+const SpirometryViewer: React.FC<{ study: ComplementaryStudy; dark?: boolean }> = ({ study, dark = false }) => {
   const txt = norm(`${study.result} ${study.interpretation || ''}`);
 
   // Parse exact reported values when available so curves match text 100%
@@ -1298,19 +1429,19 @@ const SpirometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) =>
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-bold text-[#263A32] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#43866B]" />
+        <span className={`font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+          <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
           Gráficas Espirométricas (Curva Flujo-Volumen y Volumen-Tiempo)
         </span>
         <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium">
-          <span className="flex items-center gap-1 text-[#55685F]">
+          <span className={`flex items-center gap-1 ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
             <span className="w-3 h-0.5 border-t-2 border-dashed border-[#718078] inline-block" /> Predicho
           </span>
-          <span className="flex items-center gap-1 text-amber-800">
+          <span className={`flex items-center gap-1 ${dark ? 'text-amber-300' : 'text-amber-800'}`}>
             <span className="w-3 h-0.5 bg-amber-600 inline-block" /> Basal (Pre-BD)
           </span>
           {postBdFV && (
-            <span className="flex items-center gap-1 text-[#1F4B3A]">
+            <span className={`flex items-center gap-1 ${dark ? 'text-[#68C79F]' : 'text-[#1F4B3A]'}`}>
               <span className="w-3 h-0.5 bg-[#43866B] inline-block" /> Post-BD
             </span>
           )}
@@ -1428,7 +1559,7 @@ const SpirometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) =>
 
 // ---------- ELECTROENCEPHALOGRAM (EEG) VIEWER ----------
 
-const EegViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) => {
+const EegViewer: React.FC<{ study: ComplementaryStudy; dark?: boolean }> = ({ study, dark = false }) => {
   const txt = norm(`${study.result} ${study.interpretation || ''}`);
   const txtNoNeg = stripMedicalNegations(txt);
 
@@ -1512,11 +1643,11 @@ const EegViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) => {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-bold text-[#263A32] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#43866B]" />
+        <span className={`font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+          <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
           Trazado Electroencefalográfico (Montaje Longitudinal Bipolar · 10–20)
         </span>
-        <span className="text-[11px] text-[#55685F] font-mono">30 mm/s · 70 µV/cm · 6 segundos</span>
+        <span className={`text-[11px] font-mono ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>30 mm/s · 70 µV/cm · 6 segundos</span>
       </div>
       <div className="rounded-xl overflow-x-auto border border-[#E2EAE4]">
         <svg viewBox="0 0 900 430" className="w-full min-w-[600px] h-auto block" style={{ background: '#F8FAFC' }}>
@@ -1556,7 +1687,7 @@ const EegViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) => {
 
 // ---------- AUDIOMETRY VIEWER ----------
 
-const AudiometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) => {
+const AudiometryViewer: React.FC<{ study: ComplementaryStudy; dark?: boolean }> = ({ study, dark = false }) => {
   const txt = norm(`${study.result} ${study.interpretation || ''}`);
   const txtNoNeg = stripMedicalNegations(txt);
   const isAbnormal = study.isAbnormal;
@@ -1583,15 +1714,17 @@ const AudiometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) =>
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-bold text-[#263A32] flex items-center gap-1.5">
-          <Activity className="w-4 h-4 text-[#43866B]" />
+        <span className={`font-bold flex items-center gap-1.5 ${dark ? 'text-[#E8F2ED]' : 'text-[#263A32]'}`}>
+          <Activity className={`w-4 h-4 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
           Audiograma Tonal Liminar (Oído Derecho ○ · Oído Izquierdo ×)
         </span>
         <div className="flex flex-wrap items-center gap-3 text-[11px]">
-          <span className="text-rose-700 font-semibold">○ Vía Aérea OD</span>
-          <span className="text-sky-700 font-semibold">× Vía Aérea OI</span>
-          {(boneRightDb || boneLeftDb) && <span className="text-amber-700 font-semibold">[ / ] Vía Ósea</span>}
-          <span className="text-[#1F4B3A] font-medium">Normal ≤ 25 dB</span>
+          <span className={`font-semibold ${dark ? 'text-rose-300' : 'text-rose-700'}`}>○ Vía Aérea OD</span>
+          <span className={`font-semibold ${dark ? 'text-sky-300' : 'text-sky-700'}`}>× Vía Aérea OI</span>
+          {(boneRightDb || boneLeftDb) && (
+            <span className={`font-semibold ${dark ? 'text-amber-300' : 'text-amber-700'}`}>[ / ] Vía Ósea</span>
+          )}
+          <span className={`font-medium ${dark ? 'text-[#68C79F]' : 'text-[#1F4B3A]'}`}>Normal ≤ 25 dB</span>
         </div>
       </div>
       <div className="bg-white border border-[#E2EAE4] rounded-xl p-3">
@@ -1645,18 +1778,22 @@ const AudiometryViewer: React.FC<{ study: ComplementaryStudy }> = ({ study }) =>
   );
 };
 
-export const StudyTracingViewer: React.FC<StudyTracingViewerProps> = ({ study, vitalSigns }) => {
+export const StudyTracingViewer: React.FC<StudyTracingViewerProps> = ({ study, vitalSigns, dark = false }) => {
   const kind = detectTracingKind(study);
   if (!kind) return null;
 
   return (
-    <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-3 sm:p-4">
-      {kind === 'ecg_12' && <EcgTwelveLeadViewer study={study} vitalSigns={vitalSigns} />}
-      {kind === 'holter_ecg' && <HolterEcgViewer study={study} vitalSigns={vitalSigns} />}
-      {kind === 'holter_bp' && <HolterBpViewer study={study} vitalSigns={vitalSigns} />}
-      {kind === 'spirometry' && <SpirometryViewer study={study} />}
-      {kind === 'eeg' && <EegViewer study={study} />}
-      {kind === 'audiometry' && <AudiometryViewer study={study} />}
+    <div
+      className={`rounded-xl p-3 sm:p-4 border ${
+        dark ? 'bg-[#121E1A] border-[#294037] text-[#E8F2ED]' : 'bg-[#F8FBF9] border-[#E2EAE4]'
+      }`}
+    >
+      {kind === 'ecg_12' && <EcgTwelveLeadViewer study={study} vitalSigns={vitalSigns} dark={dark} />}
+      {kind === 'holter_ecg' && <HolterEcgViewer study={study} vitalSigns={vitalSigns} dark={dark} />}
+      {kind === 'holter_bp' && <HolterBpViewer study={study} vitalSigns={vitalSigns} dark={dark} />}
+      {kind === 'spirometry' && <SpirometryViewer study={study} dark={dark} />}
+      {kind === 'eeg' && <EegViewer study={study} dark={dark} />}
+      {kind === 'audiometry' && <AudiometryViewer study={study} dark={dark} />}
     </div>
   );
 };

@@ -53,6 +53,10 @@
   scrollbar-width: none;
 }
 
+.no-scroll-anchor {
+  overflow-anchor: none;
+}
+
 /* Clean light clinical scrollbar */
 ::-webkit-scrollbar {
   width: 7px;

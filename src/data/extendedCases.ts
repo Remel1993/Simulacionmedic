@@ -35,7 +35,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sobrepeso grado II.', 'Cuadros previos de dolor abdominal tras comidas ricas en grasa no estudiados.'],
       nonPathological: ['Dieta rica en grasas saturadas y frituras.', 'Niega tabaquismo o alcoholismo.'],
-      family: ['Madre operada de vesícula biliar a los 50 años.'],
+      family: ['Padre con hipertensión arterial controlada; madre sana.'],
       surgical: ['Dos cesáreas previas hace más de 10 años.'],
       currentMedications: ['Tomó una pastilla de butilhioscina ayer sin alivio significativo.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -360,7 +360,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipertensión arterial sistémica de 12 años.', 'Fibrilación auricular paroxística/persistente diagnosticada hace 2 años.'],
       nonPathological: ['Exfumador desde hace 10 años; niega alcoholismo actual.'],
-      family: ['Hermano mayor con evento vascular cerebral previo a los 70 años.'],
+      family: ['Sin antecedentes heredofamiliares relevantes referidos.'],
       surgical: ['Hernioplastia inguinal derecha hace 8 años.'],
       currentMedications: ['Losartán 50 mg diarios. Suspendió Apixabán por cuenta propia hace 3 meses.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -492,7 +492,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Asma bronquial persistente desde los 9 años (2 hospitalizaciones previas, ninguna en UCI).'],
       nonPathological: ['Exposición intensa a polvo doméstico ayer; convive con gato en casa.'],
-      family: ['Madre con rinitis alérgica y asma leve.'],
+      family: ['Sin antecedentes heredofamiliares relevantes conocidos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Salbutamol aerosol (abuso de >8 disparos en las últimas 6 horas); suspendió corticoide inhalado hace 5 meses.'],
       allergies: ['Alergia conocida a ácaros del polvo y epitelio de gato; intolerancia a aspirina/AINEs (inducen broncoespasmo).'],
@@ -639,7 +639,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipertensión arterial crónica de 15 años.', 'Dislipidemia en control irregular.'],
       nonPathological: ['Ayer bebió 4 copas de vino en una celebración; habitualmente no bebe en exceso.'],
-      family: ['Padre fallecido por insuficiencia cardíaca a los 74 años.'],
+      family: ['Padres fallecidos en edad avanzada por causas no especificadas.'],
       surgical: ['Prostatectomía benigna hace 4 años.'],
       currentMedications: ['Amlodipino 5 mg al día (con apego irregular).'],
       allergies: ['Sin alergias conocidas.'],
@@ -786,7 +786,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Gonartrosis bilateral crónica.'],
       nonPathological: ['Consumo elevado diario de AINEs por automedicación; toma 3 tazas diarias de café.'],
-      family: ['Sin antecedentes digestivos oncológicos conocidos.'],
+      family: ['Madre con hipotiroidismo controlado; padre sano.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Naproxeno 500 mg cada 12h + Ketorolaco 10 mg frecuentes desde hace 3 meses sin omeprazol.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -925,7 +925,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Enfermedad de Graves-Basedow diagnosticada hace 1 año con abandono de tratamiento.', 'Pérdida involuntaria de 7 kg en los últimos 3 meses.'],
       nonPathological: ['Refiere mucho calor ambiental aun en habitaciones frías e insomnio severo reciente.'],
-      family: ['Tía materna con enfermedad tiroidea autoinmune.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomaba Tiamazol (Metimazol) 10 mg, pero lo abandonó hace 4 meses.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -1353,7 +1353,7 @@ export const EXTENDED_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Primigesta, embarazo actual de 34 semanas; sin hipertensión crónica conocida previa al embarazo.'],
       nonPathological: ['Control prenatal irregular durante el último trimestre.'],
-      family: ['Madre con hipertensión arterial crónica.'],
+      family: ['Padres aparentemente sanos; sin antecedentes relevantes referidos.'],
       surgical: ['Ninguna.'],
       currentMedications: ['Ácido fólico y sulfato ferroso. Tomó paracetamol 500 mg hace 3h sin mejoría de la cefalea.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],

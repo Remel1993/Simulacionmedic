@@ -1,9 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ClinicalCase, GameMode, Specialty } from '../types/clinical';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { ClinicalCase, GameMode, SavedCaseRecord, Specialty } from '../types/clinical';
 import { ALL_CURATED_CASES } from '../data/allCases';
 import { buildCustomLocalCase } from '../engine/caseGenerator';
 import { HospitalSelect } from './HospitalSelect';
-import { X, Sparkles, Stethoscope, Shield, Flame, GraduationCap, Check, ChevronRight, PlusCircle, Trash2 } from 'lucide-react';
+import {
+  X,
+  Sparkles,
+  Stethoscope,
+  Shield,
+  Flame,
+  GraduationCap,
+  Check,
+  ChevronRight,
+  PlusCircle,
+  Trash2,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  RotateCcw,
+} from 'lucide-react';
 
 interface NewCaseModalProps {
   isOpen: boolean;
@@ -14,6 +29,8 @@ interface NewCaseModalProps {
   onSaveCustomCase?: (newCase: ClinicalCase) => Promise<void>;
   onDeleteCustomCase?: (caseId: string) => Promise<void>;
   initialTab?: 'custom' | 'presets' | 'add_case';
+  completedCaseIds?: string[];
+  history?: SavedCaseRecord[];
 }
 
 const ALL_CURATED = ALL_CURATED_CASES;
@@ -81,6 +98,17 @@ const SPECIALTIES: Array<{ id: Specialty; name: string }> = [
   { id: 'toxicologia', name: 'Toxicología Clínica' },
 ];
 
+type OriginFilter = 'all' | 'common' | 'rare' | 'foreign' | 'custom_only';
+type CompletionFilter = 'all' | 'unsolved' | 'solved' | 'review';
+type ModeScopeFilter = 'all' | 'outpatient' | 'principiante' | 'medico_general' | 'complex';
+
+function getCaseOrigin(c: ClinicalCase): Exclude<OriginFilter, 'all'> {
+  if (c.clinicalMetadata?.isCustom) return 'custom_only';
+  if (c.id.startsWith('case-exp-ext-')) return 'foreign';
+  if (c.id.startsWith('case-exp-rare-')) return 'rare';
+  return 'common';
+}
+
 export const NewCaseModal: React.FC<NewCaseModalProps> = ({
   isOpen,
   onClose,
@@ -90,17 +118,25 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
   onSaveCustomCase,
   onDeleteCustomCase,
   initialTab = 'custom',
+  completedCaseIds = [],
+  history = [],
 }) => {
   const [selectedMode, setSelectedMode] = useState<GameMode>('medico_general');
   const [selectedSpecialty, setSelectedSpecialty] = useState<Specialty>('aleatorio');
   const [activeTab, setActiveTab] = useState<'custom' | 'presets' | 'add_case'>(initialTab);
-  const [presetFilter, setPresetFilter] = useState<'all' | 'outpatient' | 'principiante' | 'medico_general' | 'complex' | 'custom_only'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [specialtyFilter, setSpecialtyFilter] = useState<Specialty | 'all'>('all');
+  const [originFilter, setOriginFilter] = useState<OriginFilter>('all');
+  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>('all');
+  const [presetFilter, setPresetFilter] = useState<ModeScopeFilter>('all');
   const modalBodyRef = useRef<HTMLDivElement>(null);
 
   // Local extensible library builder state
   const [newPatientName, setNewPatientName] = useState('');
   const [newAge, setNewAge] = useState('34');
   const [newSex, setNewSex] = useState<'Masculino' | 'Femenino'>('Masculino');
+  const [newWeightKg, setNewWeightKg] = useState('70');
+  const [newHeightCm, setNewHeightCm] = useState('168');
   const [newSpecialty, setNewSpecialty] = useState<Exclude<Specialty, 'aleatorio'>>('medicina_interna');
   const [newMode, setNewMode] = useState<GameMode>('medico_general');
   const [newReason, setNewReason] = useState('');
@@ -123,24 +159,106 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
     if (isOpen && modalBodyRef.current) {
       modalBodyRef.current.scrollTop = 0;
     }
-  }, [isOpen, activeTab, presetFilter]);
+  }, [isOpen, activeTab, presetFilter, originFilter, completionFilter, specialtyFilter]);
+
+  const completedSet = useMemo(() => new Set(completedCaseIds), [completedCaseIds]);
+
+  const performanceByCaseId = useMemo(() => {
+    const map = new Map<
+      string,
+      { bestScore: number; latestScore: number; attempts: number; hasSafetyError: boolean }
+    >();
+    for (const rec of history) {
+      if (!rec.caseId) continue;
+      const existing = map.get(rec.caseId);
+      const hasErr = (rec.evaluation?.criticalSafetyErrors?.length ?? 0) > 0;
+      if (!existing) {
+        map.set(rec.caseId, {
+          bestScore: rec.score,
+          latestScore: rec.score,
+          attempts: 1,
+          hasSafetyError: hasErr,
+        });
+      } else {
+        existing.bestScore = Math.max(existing.bestScore, rec.score);
+        existing.attempts += 1;
+        existing.hasSafetyError = existing.hasSafetyError || hasErr;
+      }
+    }
+    return map;
+  }, [history]);
 
   if (!isOpen) return null;
 
   const combinedCases = [...customCases, ...ALL_CURATED];
 
+  const getSpecialtyLabel = (id: Specialty) =>
+    SPECIALTIES.find((s) => s.id === id)?.name || id.replace('_', ' ');
+
+  const getModeLabel = (id: GameMode) =>
+    MODES.find((m) => m.id === id)?.short || id;
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
   const filteredPresets = combinedCases.filter((c) => {
-    if (presetFilter === 'custom_only') return Boolean(c.clinicalMetadata?.isCustom);
-    if (presetFilter === 'outpatient') {
-      return c.solution.optimalTreatment.hospitalizationDecision === 'Ambulatorio';
+    if (specialtyFilter !== 'all' && c.specialty !== specialtyFilter) return false;
+
+    if (originFilter !== 'all' && getCaseOrigin(c) !== originFilter) return false;
+
+    const perf = performanceByCaseId.get(c.id);
+    const isResolved = completedSet.has(c.id) || Boolean(perf);
+    const needsReview = Boolean(perf && (perf.bestScore < 70 || perf.hasSafetyError));
+
+    if (completionFilter === 'unsolved' && isResolved) return false;
+    if (completionFilter === 'solved' && !isResolved) return false;
+    if (completionFilter === 'review' && !needsReview) return false;
+
+    if (presetFilter === 'outpatient' && c.solution.optimalTreatment.hospitalizationDecision !== 'Ambulatorio') {
+      return false;
     }
-    if (presetFilter === 'principiante') return c.mode === 'principiante';
-    if (presetFilter === 'medico_general') return c.mode === 'medico_general';
-    if (presetFilter === 'complex') {
-      return c.mode === 'residente' || c.mode === 'urgencias' || c.mode === 'examen';
+    if (presetFilter === 'principiante' && c.mode !== 'principiante') return false;
+    if (presetFilter === 'medico_general' && c.mode !== 'medico_general') return false;
+    if (
+      presetFilter === 'complex' &&
+      c.mode !== 'residente' &&
+      c.mode !== 'urgencias' &&
+      c.mode !== 'examen'
+    ) {
+      return false;
     }
+
+    if (normalizedQuery) {
+      // Strictly exclude solution.correctDiagnosis and differentials from public search to prevent spoilers
+      const haystack = [
+        c.patientInfo.name,
+        String(c.patientInfo.age),
+        c.patientInfo.sex,
+        c.patientInfo.consultReason,
+        getSpecialtyLabel(c.specialty),
+        getModeLabel(c.mode),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(normalizedQuery)) return false;
+    }
+
     return true;
   });
+
+  const hasActiveFilters =
+    Boolean(normalizedQuery) ||
+    specialtyFilter !== 'all' ||
+    originFilter !== 'all' ||
+    completionFilter !== 'all' ||
+    presetFilter !== 'all';
+
+  const resetPresetFilters = () => {
+    setSearchQuery('');
+    setSpecialtyFilter('all');
+    setOriginFilter('all');
+    setCompletionFilter('all');
+    setPresetFilter('all');
+  };
 
   const selectedModeObj = MODES.find((m) => m.id === selectedMode);
   const selectedSpecObj = SPECIALTIES.find((s) => s.id === selectedSpecialty);
@@ -180,6 +298,8 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
       temperature: 37.0,
       oxygenSaturation: 98,
       glasgow: 15,
+      weightKg: Number(newWeightKg) || 70,
+      heightCm: Number(newHeightCm) || 168,
       correctDiagnosis: newDiagnosis,
       differentialDiagnoses: newDifferentials
         .split(',')
@@ -205,14 +325,14 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
     setNewDose('');
     setNewAlert('');
     setActiveTab('presets');
-    setPresetFilter('custom_only');
+    setOriginFilter('custom_only');
   };
 
-  const getSpecialtyLabel = (id: Specialty) =>
-    SPECIALTIES.find((s) => s.id === id)?.name || id.replace('_', ' ');
-
-  const getModeLabel = (id: GameMode) =>
-    MODES.find((m) => m.id === id)?.short || id;
+  const originCounts = {
+    common: combinedCases.filter((c) => getCaseOrigin(c) === 'common').length,
+    rare: combinedCases.filter((c) => getCaseOrigin(c) === 'rare').length,
+    foreign: combinedCases.filter((c) => getCaseOrigin(c) === 'foreign').length,
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-1.5 sm:p-3 lg:p-4 bg-[#263A32]/45 backdrop-blur-sm">
@@ -257,7 +377,7 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('presets')}
-            className={`min-h-[40px] px-3 py-2 text-xs font-semibold rounded-xl transition-colors cursor-pointer text-center ${
+            className={`min-h-[40px] px-3 py-2 text-xs font-semibold rounded-xl transition-colors cursor-pointer text-center tabular-nums ${
               activeTab === 'presets'
                 ? 'bg-[#43866B] text-white shadow-sm'
                 : 'bg-white border border-[#E2EAE4] text-[#55685F] hover:text-[#263A32] hover:border-[#72A98A]'
@@ -346,32 +466,88 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
               )}
             </div>
           ) : activeTab === 'presets' ? (
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#43866B] block">
-                  Casos Clínicos Curados y Locales ({filteredPresets.length})
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'all', label: `Todos (${combinedCases.length})` },
-                    ...(customCases.length > 0
-                      ? [{ id: 'custom_only', label: `Mis Casos (${customCases.length})` }]
-                      : []),
-                    {
-                      id: 'outpatient',
-                      label: `Consulta Externa (${combinedCases.filter((c) => c.solution.optimalTreatment.hospitalizationDecision === 'Ambulatorio').length})`,
-                    },
-                    { id: 'principiante', label: 'Principiante' },
-                    { id: 'medico_general', label: 'Médico General' },
-                    { id: 'complex', label: 'Urgencias / Complejos' },
-                  ].map((f) => (
+            <div className="space-y-3.5">
+              {/* Header + Search + Specialty Filter */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#43866B] tabular-nums">
+                  Casos Clínicos Curados y Locales ({filteredPresets.length} de {combinedCases.length})
+                </div>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={resetPresetFilters}
+                    className="self-start md:self-auto min-h-[36px] px-3 py-1.5 rounded-lg bg-[#F8FBF9] border border-[#E2EAE4] hover:border-[#43866B] text-xs font-semibold text-[#1F4B3A] flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Limpiar filtros</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Search & Specialty Dropdown Row */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+                <div className="md:col-span-7 relative">
+                  <Search className="w-4 h-4 text-[#718078] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar por paciente, edad, síntoma inicial o especialidad..."
+                    className="w-full min-h-[42px] bg-[#F8FBF9] border border-[#E2EAE4] focus:border-[#43866B] focus:bg-white rounded-xl pl-10 pr-8 py-2 text-xs text-[#263A32] placeholder-[#718078] focus:outline-none transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Borrar búsqueda"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[#718078] hover:text-[#263A32] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="md:col-span-5">
+                  <HospitalSelect
+                    variant="compact"
+                    panelTitle="Filtrar por Especialidad"
+                    searchable
+                    searchPlaceholder="Buscar especialidad..."
+                    value={specialtyFilter}
+                    onChange={(val) => setSpecialtyFilter(val as Specialty | 'all')}
+                    options={[
+                      { value: 'all', label: 'Todas las especialidades' },
+                      ...SPECIALTIES.filter((s) => s.id !== 'aleatorio').map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                      })),
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* Interactive Segmented Filters: Origin, Status, Level */}
+              <div className="space-y-2 pt-0.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-[#718078] mr-1">Origen:</span>
+                  {(
+                    [
+                      { id: 'all', label: 'Todos' },
+                      { id: 'common', label: `Comunes (${originCounts.common})` },
+                      { id: 'rare', label: `Poco frecuentes (${originCounts.rare})` },
+                      { id: 'foreign', label: `Extranjeros (${originCounts.foreign})` },
+                      ...(customCases.length > 0
+                        ? [{ id: 'custom_only', label: `Mis Casos (${customCases.length})` }]
+                        : []),
+                    ] as Array<{ id: OriginFilter; label: string }>
+                  ).map((f) => (
                     <button
                       key={f.id}
                       type="button"
-                      onClick={() => setPresetFilter(f.id as any)}
-                      className={`min-h-[34px] px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                        presetFilter === f.id
-                          ? 'bg-[#43866B] text-white shadow-sm'
+                      onClick={() => setOriginFilter(f.id)}
+                      className={`min-h-[34px] px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer tabular-nums whitespace-nowrap ${
+                        originFilter === f.id
+                          ? 'bg-[#43866B] text-white shadow-xs'
                           : 'bg-[#F8FBF9] border border-[#E2EAE4] text-[#55685F] hover:border-[#72A98A] hover:text-[#263A32]'
                       }`}
                     >
@@ -379,61 +555,167 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
                     </button>
                   ))}
                 </div>
-              </div>
 
-              <div className="space-y-2.5">
-                {filteredPresets.map((preset) => (
-                  <div
-                    key={preset.id}
-                    onClick={() => handlePresetSelect(preset.id)}
-                    className="p-4 rounded-xl bg-[#F8FBF9] border border-[#E2EAE4] hover:border-[#43866B] hover:bg-white transition-all cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#43866B] font-semibold uppercase tracking-wider">
-                        <span>{getSpecialtyLabel(preset.specialty)}</span>
-                        <span className="text-[#718078]">·</span>
-                        <span className="text-sky-700">{getModeLabel(preset.mode)}</span>
-                        <span className="text-[#718078]">·</span>
-                        <span className="text-emerald-700">
-                          {preset.solution.optimalTreatment.hospitalizationDecision === 'Ambulatorio'
-                            ? 'Consulta Externa'
-                            : preset.patientInfo.triageLevel}
-                        </span>
-                        {preset.clinicalMetadata?.isCustom && (
-                          <>
-                            <span className="text-[#718078]">·</span>
-                            <span className="text-amber-700">Caso Local</span>
-                          </>
-                        )}
-                      </div>
-                      <h4 className="text-sm font-bold text-[#263A32] mt-0.5 group-hover:text-[#43866B] transition-colors">
-                        {preset.patientInfo.name} ({preset.patientInfo.age} años, {preset.patientInfo.sex})
-                      </h4>
-                      <p className="text-xs text-[#55685F] mt-1 line-clamp-2 italic">
-                        "{preset.patientInfo.consultReason}"
-                      </p>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-2 text-xs font-semibold text-[#43866B] group-hover:text-[#356D56]">
-                      {preset.clinicalMetadata?.isCustom && onDeleteCustomCase && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void onDeleteCustomCase(preset.id);
-                          }}
-                          className="min-w-[36px] min-h-[36px] p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer flex items-center justify-center"
-                          title="Eliminar caso local"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <span>Cargar Caso</span>
-                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-[#718078] mr-1">Estado:</span>
+                    {(
+                      [
+                        { id: 'all', label: 'Todos' },
+                        { id: 'unsolved', label: 'No resueltos' },
+                        { id: 'solved', label: 'Resueltos' },
+                        { id: 'review', label: 'A reforzar (<70 pts)' },
+                      ] as Array<{ id: CompletionFilter; label: string }>
+                    ).map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setCompletionFilter(s.id)}
+                        className={`min-h-[34px] px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          completionFilter === s.id
+                            ? 'bg-[#263A32] text-white shadow-xs'
+                            : 'bg-[#F8FBF9] border border-[#E2EAE4] text-[#55685F] hover:border-[#72A98A] hover:text-[#263A32]'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-[#718078] mr-1">Nivel:</span>
+                    {(
+                      [
+                        { id: 'all', label: 'Todos' },
+                        { id: 'outpatient', label: 'Consulta Externa' },
+                        { id: 'principiante', label: 'Principiante' },
+                        { id: 'medico_general', label: 'Médico General' },
+                        { id: 'complex', label: 'Urgencias / Complejos' },
+                      ] as Array<{ id: ModeScopeFilter; label: string }>
+                    ).map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setPresetFilter(f.id)}
+                        className={`min-h-[34px] px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          presetFilter === f.id
+                            ? 'bg-[#43866B] text-white shadow-xs'
+                            : 'bg-[#F8FBF9] border border-[#E2EAE4] text-[#55685F] hover:border-[#72A98A] hover:text-[#263A32]'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
+
+              {filteredPresets.length === 0 ? (
+                <div className="rounded-xl border border-[#E2EAE4] bg-[#F8FBF9] p-8 text-center space-y-3">
+                  <p className="text-xs sm:text-sm font-semibold text-[#263A32]">
+                    No se encontraron casos con los filtros seleccionados.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetPresetFilters}
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#43866B] hover:bg-[#356D56] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Mostrar todos los casos</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredPresets.map((preset) => {
+                    const origin = getCaseOrigin(preset);
+                    const perf = performanceByCaseId.get(preset.id);
+                    const isSolved = completedSet.has(preset.id) || Boolean(perf);
+                    const needsReview = Boolean(
+                      perf && (perf.bestScore < 70 || perf.hasSafetyError)
+                    );
+
+                    return (
+                      <div
+                        key={preset.id}
+                        onClick={() => handlePresetSelect(preset.id)}
+                        className="p-4 rounded-xl bg-[#F8FBF9] border border-[#E2EAE4] hover:border-[#43866B] hover:bg-white transition-all cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[0_1px_2px_rgba(38,58,50,0.03)]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[#55685F]">
+                            <span className="text-[#43866B]">{getSpecialtyLabel(preset.specialty)}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-sky-700">{getModeLabel(preset.mode)}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-[#263A32]">
+                              {preset.solution.optimalTreatment.hospitalizationDecision === 'Ambulatorio'
+                                ? 'Consulta Externa'
+                                : 'Atención Hospitalaria / Urgencias'}
+                            </span>
+                            {origin === 'rare' && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-amber-700">Poco frecuente</span>
+                              </>
+                            )}
+                            {origin === 'foreign' && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-sky-800">Caso extranjero</span>
+                              </>
+                            )}
+                            {origin === 'custom_only' && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                <span className="text-amber-700">Caso Local</span>
+                              </>
+                            )}
+                            {isSolved && (
+                              <>
+                                <span aria-hidden="true">·</span>
+                                {needsReview ? (
+                                  <span className="inline-flex items-center gap-1 text-amber-800 tabular-nums">
+                                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                                    A reforzar ({perf?.bestScore ?? 0}/100)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-emerald-700 tabular-nums">
+                                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                    {perf ? `Completado · Mejor ${perf.bestScore}/100` : 'Completado'}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-bold text-[#263A32] mt-1 group-hover:text-[#43866B] transition-colors">
+                            {preset.patientInfo.name} (<span className="tabular-nums">{preset.patientInfo.age}</span> años, {preset.patientInfo.sex})
+                          </h4>
+                          <p className="text-xs text-[#55685F] mt-1 line-clamp-2 italic">
+                            "{preset.patientInfo.consultReason}"
+                          </p>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-2 text-xs font-semibold text-[#43866B] group-hover:text-[#356D56]">
+                          {preset.clinicalMetadata?.isCustom && onDeleteCustomCase && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void onDeleteCustomCase(preset.id);
+                              }}
+                              className="min-w-[40px] min-h-[40px] p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer flex items-center justify-center"
+                              title="Eliminar caso local"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <span className="whitespace-nowrap">{isSolved ? 'Reintentar' : 'Cargar Caso'}</span>
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <form onSubmit={handleCreateLocalCase} className="space-y-4 text-xs">
@@ -482,6 +764,34 @@ export const NewCaseModal: React.FC<NewCaseModalProps> = ({
                       { value: 'Masculino', label: 'Masculino' },
                       { value: 'Femenino', label: 'Femenino' },
                     ]}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#263A32] font-semibold mb-1">Peso (kg)</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={250}
+                    step="0.1"
+                    value={newWeightKg}
+                    onChange={(e) => setNewWeightKg(e.target.value)}
+                    placeholder="Ej. 70"
+                    className="w-full min-h-[42px] bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl px-3 py-2 text-[#263A32] focus:outline-none focus:border-[#43866B] focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[#263A32] font-semibold mb-1">Talla (cm)</label>
+                  <input
+                    type="number"
+                    min={40}
+                    max={230}
+                    value={newHeightCm}
+                    onChange={(e) => setNewHeightCm(e.target.value)}
+                    placeholder="Ej. 168"
+                    className="w-full min-h-[42px] bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl px-3 py-2 text-[#263A32] focus:outline-none focus:border-[#43866B] focus:bg-white"
                   />
                 </div>
               </div>

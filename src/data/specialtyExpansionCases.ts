@@ -38,7 +38,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Episodios ocasionales de lesiones labiales por estrés; niega enfermedades oculares crónicas.'],
       nonPathological: ['Trabaja frente a computadora; no fuma.'],
-      family: ['Sin antecedentes oftalmológicos relevantes.'],
+      family: ['Sin antecedentes familiares relevantes.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Aplicó gotas refrescantes de venta libre sin mejoría.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -185,7 +185,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipermetropía desde joven (usa lentes gruesos para leer); hipertensión arterial leve.'],
       nonPathological: ['Niega tabaquismo o alcoholismo.'],
-      family: ['Madre perdió visión de un ojo en la vejez por causa no precisada.'],
+      family: ['Padre hipertenso en control; madre sana.'],
       surgical: ['Niega cirugías oculares.'],
       currentMedications: ['Losartán 50 mg cada 24 h; tomó un antigripal con clorfeniramina esta tarde.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -792,7 +792,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Síntomas urinarios bajos crónicos sin seguimiento médico; hipertensión leve.'],
       nonPathological: ['Tabaquismo suspendido hace 10 años.'],
-      family: ['Hermano operado de la próstata a los 70 años.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Hernioplastia inguinal izquierda hace 12 años.'],
       currentMedications: ['Amlodipino 5 mg al día; tomó un antigripal con pseudoefedrina y clorfeniramina anoche.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -932,7 +932,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
       age: 49,
       sex: 'Femenino',
       occupation: 'Contadora pública',
-      consultReason: 'Fiebre alta con escalofríos después de recibir quimioterapia',
+      consultReason: 'Fiebre alta con escalofríos y malestar general desde anoche',
       evolutionTime: '6 horas de evolución',
       currentIllness:
         'Paciente femenina de 49 años que acude a urgencias porque hace 6 horas inició con escalofríos intensos, fiebre de 38.9 °C en casa, debilidad marcada y ligero ardor en la boca al tragar. Refiere estar en tratamiento oncológico por tumor de mama izquierda y haber recibido su último ciclo de quimioterapia intravenosa exactamente hace 10 días (nadir). Niega tos productiva o diarrea profusa.',
@@ -1108,7 +1108,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Cuadro gripal autolimitado hace 15 días; niega lupus, hepatopatías o sangrados previos.'],
       nonPathological: ['No toma alcohol ni fuma.'],
-      family: ['Sin antecedentes hematológicos.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Ninguno actualmente; niega uso de aspirina, anticoagulantes o suplementos herbales.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -1266,7 +1266,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Dolor y rigidez en hombros matutinos desde hace un mes; osteopenia leve.'],
       nonPathological: ['No fuma ni consume alcohol.'],
-      family: ['Sin antecedentes reumatológicos conocidos.'],
+      family: ['Sin antecedentes heredofamiliares conocidos.'],
       surgical: ['Colecistectomía hace 18 años.'],
       currentMedications: ['Tomó paracetamol sin alivio real de la cefalea.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -1543,7 +1543,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
       age: 22,
       sex: 'Femenino',
       occupation: 'Estudiante de Diseño',
-      consultReason: 'Ingestión intencional de gran cantidad de pastillas para el dolor hace unas horas',
+      consultReason: 'Náuseas, vómitos y malestar abdominal tras incidente en domicilio',
       evolutionTime: '5 horas desde la ingestión',
       currentIllness:
         'Paciente femenina de 22 años que acude con su hermana porque hace exactamente 5 horas, después de una crisis emocional, ingirió de golpe 36 tabletas de 500 mg de un analgésico común de venta libre (total aproximado 18 gramos) con agua. Hace dos horas presentó náuseas intensas, dos vómitos y refiere molestia sorda leve debajo de las costillas del lado derecho. Se encuentra despierta, arrepentida y colaboradora.',
@@ -1688,7 +1688,7 @@ export const SPECIALTY_EXPANSION_CASES: ClinicalCase[] = [
       age: 41,
       sex: 'Masculino',
       occupation: 'Albañil',
-      consultReason: 'Visión borrosa como en neblina blanca, respiración agitada y dolor abdominal fuerte',
+      consultReason: 'Visión muy borrosa, respiración agitada y dolor abdominal intenso',
       evolutionTime: '18 horas tras ingesta de licor artesanal',
       currentIllness:
         'Paciente masculino de 41 años que acude con familiares porque desde hace 4 horas empezó a ver sumamente borroso ("como si tuviera una neblina blanca espesa frente a los ojos"), refiere dolor intenso en la boca del estómago, náuseas, dolor de cabeza y respiración muy rápida y profunda. Sus familiares cuentan que anoche estuvo bebiendo abundante licor artesanal sin etiqueta en una reunión; otros conocidos del grupo también se sintieron mal esta mañana.',

@@ -324,7 +324,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Niega enfermedades oculares crónicas o diabetes.'],
       nonPathological: ['No usa lentes de contacto; su sobrino de 4 años tuvo infección en los ojos hace pocos días.'],
-      family: ['Sin antecedentes oftalmológicos relevantes.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno; únicamente se lavó con manzanilla hoy sin mejoría.'],
       allergies: ['Sin alergias conocidas.'],
@@ -455,7 +455,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Episodios similares leves en épocas de cierre laboral; niega úlcera diagnosticada.'],
       nonPathological: ['Toma 3 a 4 tazas de café al día en ayunas, come a deshoras, consumo ocasional de picante y alcohol los fines de semana.'],
-      family: ['Madre con gastritis crónica tratada por H. pylori hace años.'],
+      family: ['Padre hipertenso controlado; madre sana.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Tomó un antiácido masticable hoy con alivio parcial durante 1 hora.'],
       allergies: ['Sin alergias conocidas.'],
@@ -741,7 +741,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Rinitis alérgica estacional desde los 10 años; brotes cutáneos similares en la infancia.'],
       nonPathological: ['Se baña con agua muy caliente y usa jabones perfumados y ropa de poliéster ajustada.'],
-      family: ['Madre con asma bronquial leve en la juventud.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Se ha aplicado cremas perfumadas comerciales que le arden al aplicarlas.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -1013,7 +1013,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sano previamente; sin antecedentes de eccema o alergias.'],
       nonPathological: ['Comparte cama o sillón con su hermano; otros familiares en casa presentan síntomas parecidos.'],
-      family: ['Hermano y madre con prurito nocturno reciente.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Se aplicó crema para hongos de venta libre sin ninguna mejoría.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -1260,7 +1260,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sin hipertensión ni migrañas previas.'],
       nonPathological: ['Jornadas largas frente a pantalla con mala postura cervical, duerme 5.5 horas y alto estrés laboral.'],
-      family: ['Sin antecedentes neurológicos graves.'],
+      family: ['Sin antecedentes familiares de relevancia.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Ha tomado paracetamol 500 mg algunos días de esta semana con buen alivio.'],
       allergies: ['Sin alergias conocidas.'],
@@ -1386,7 +1386,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Hipertensión arterial leve y sobrepeso; tuvo un dolor parecido pero leve en el mismo dedo hace 1 año que cedió solo.'],
       nonPathological: ['Dieta rica en carnes rojas, mariscos y consumo de cerveza los fines de semana.'],
-      family: ['Padre con "ácido úrico alto" y cálculos renales.'],
+      family: ['Madre con hipotiroidismo en control; padre sano.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Hidroclorotiazida 25 mg cada 24 h desde hace 6 meses para la presión.'],
       allergies: ['Sin alergias medicamentosas conocidas.'],
@@ -1766,7 +1766,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Menarquia a los 12 años; ciclos menstruales regulares de 28x4 días; cólicos menstruales primarios desde los 15 años.'],
       nonPathological: ['Niega vida sexual activa reciente (o método de barrera regular); niega tabaquismo.'],
-      family: ['Hermana mayor también con cólicos menstruales intensos en su juventud.'],
+      family: ['Padres aparentemente sanos.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Tomó una pastilla de paracetamol 500 mg hace 3 horas con muy poco alivio.'],
       allergies: ['Sin alergias conocidas a medicamentos.'],
@@ -1894,7 +1894,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Sin enfermedades médicas crónicas conocidas; niega episodios previos de euforia extrema/manía.'],
       nonPathological: ['No fuma ni consume alcohol o sustancias. Separación de pareja hace 4 meses.'],
-      family: ['Tía materna con antecedente de depresión tratada.'],
+      family: ['Sin antecedentes familiares de relevancia referidos.'],
       surgical: ['Niega cirugías.'],
       currentMedications: ['Tomó complejo B por su cuenta sin notar diferencia.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2021,7 +2021,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Estreñimiento crónico leve funcional por baja ingesta de fibra y agua.'],
       nonPathological: ['Permanece sentado 9-10 horas diarias y suele pasar 15-20 minutos sentado en el inodoro leyendo el celular.'],
-      family: ['Sin antecedentes de cáncer colorrectal familiar.'],
+      family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias conocidas.'],
@@ -2271,7 +2271,7 @@ export const EVERYDAY_GENERAL_CASES: ClinicalCase[] = [
     background: {
       pathological: ['Obesidad abdominal (IMC 31.4 kg/m²); hipertensión limítrofe no tratada previamente.'],
       nonPathological: ['Dieta rica en carbohidratos simples, azúcares añadidos y grasas saturadas; sedentarismo completo; fuma 2 cigarrillos ocasionales.'],
-      family: ['Padre con infarto agudo de miocardio a los 56 años; madre diabética tipo 2.'],
+      family: ['Sin antecedentes heredofamiliares de relevancia conocidos.'],
       surgical: ['Niega cirugías previas.'],
       currentMedications: ['Ninguno actualmente.'],
       allergies: ['Sin alergias conocidas.'],

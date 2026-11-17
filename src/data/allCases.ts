@@ -6,6 +6,11 @@ import { EXTRA_CASES } from './extraCases';
 import { OUTPATIENT_CASES } from './outpatientCases';
 import { EVERYDAY_GENERAL_CASES } from './everydayGeneralCases';
 import { SPECIALTY_EXPANSION_CASES } from './specialtyExpansionCases';
+import { COMMON_EXPANSION_CASES_A } from './commonExpansionCasesA';
+import { COMMON_EXPANSION_CASES_B } from './commonExpansionCasesB';
+import { UNCOMMON_AND_FOREIGN_CASES } from './uncommonAndForeignCases';
+import { CARDIO_ENDO_EXPANSION_CASES } from './cardioEndoExpansionCases';
+import { OUTPATIENT_CARDIO_BLOCKS_CASES } from './outpatientCardioBlocksCases';
 
 const DEFAULT_EDUCATIONAL_DISCLAIMER =
   'Material educativo para entrenamiento de estudiantes, internos, médicos generales y residentes. No sustituye el juicio clínico ni los protocolos institucionales locales.';
@@ -40,7 +45,7 @@ function enrichClinicalCaseMetadata(c: ClinicalCase): ClinicalCase {
 }
 
 /**
- * Biblioteca unificada de todos los casos clínicos curados (100 casos) con metadatos de evidencia y revisión.
+ * Biblioteca unificada de todos los casos clínicos curados (166 casos) con metadatos de evidencia y revisión.
  */
 export const ALL_CURATED_CASES: ClinicalCase[] = [
   ...PRESET_CASES,
@@ -50,5 +55,10 @@ export const ALL_CURATED_CASES: ClinicalCase[] = [
   ...OUTPATIENT_CASES,
   ...EVERYDAY_GENERAL_CASES,
   ...SPECIALTY_EXPANSION_CASES,
+  ...COMMON_EXPANSION_CASES_A,
+  ...COMMON_EXPANSION_CASES_B,
+  ...UNCOMMON_AND_FOREIGN_CASES,
+  ...CARDIO_ENDO_EXPANSION_CASES,
+  ...OUTPATIENT_CARDIO_BLOCKS_CASES,
 ].map(enrichClinicalCaseMetadata);
 

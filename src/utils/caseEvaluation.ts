@@ -243,6 +243,50 @@ const DIAGNOSIS_SYNONYM_GROUPS: DiagnosisSynonymGroup[] = [
     label: 'Síndrome Metabólico y Dislipidemia Mixta',
     terms: ['sindrome metabolico', 'dislipidemia', 'dislipidemia mixta', 'hipercolesterolemia', 'hipertrigliceridemia'],
   },
+  {
+    label: 'Enfermedad Inflamatoria Pélvica (EIP)',
+    terms: ['eip', 'enfermedad inflamatoria pelvica', 'salpingitis'],
+  },
+  {
+    label: 'Enfermedad Renal Crónica (ERC)',
+    terms: ['erc', 'enfermedad renal cronica', 'insuficiencia renal cronica', 'nefropatia diabetica'],
+  },
+  {
+    label: 'Tuberculosis Pulmonar (TB)',
+    terms: ['tb pulmonar', 'tbc pulmonar', 'tuberculosis pulmonar', 'tuberculosis'],
+  },
+  {
+    label: 'Edema Agudo Pulmonar Cardiogénico (EAP)',
+    terms: ['eap', 'edema agudo pulmonar', 'edema agudo de pulmon', 'insuficiencia cardiaca descompensada'],
+  },
+  {
+    label: 'Hemorragia Subaracnoidea (HSA)',
+    terms: ['hsa', 'hemorragia subaracnoidea', 'sangrado subaracnoideo'],
+  },
+  {
+    label: 'Miocardiopatía de Estrés (Takotsubo)',
+    terms: ['takotsubo', 'tako tsubo', 'miocardiopatia de estres', 'corazon roto', 'abombamiento apical'],
+  },
+  {
+    label: 'Púrpura Trombótica Trombocitopénica (PTT)',
+    terms: ['ptt', 'purpura trombotica trombocitopenica', 'sindrome de moschcowitz'],
+  },
+  {
+    label: 'Granulomatosis con Poliangeítis (GPA / Wegener)',
+    terms: ['gpa', 'granulomatosis con poliangeitis', 'granulomatosis de wegener', 'wegener'],
+  },
+  {
+    label: 'Paludismo / Malaria por P. falciparum',
+    terms: ['malaria', 'paludismo', 'plasmodium falciparum', 'paludismo grave'],
+  },
+  {
+    label: 'Leishmaniasis Visceral (Kala-azar)',
+    terms: ['leishmaniasis visceral', 'kala azar', 'kalaazar', 'leishmania infantum'],
+  },
+  {
+    label: 'Esquistosomiasis Urinaria (Bilharziasis)',
+    terms: ['esquistosomiasis', 'bilharziasis', 'schistosoma haematobium'],
+  },
 ];
 
 function expandClinicalAbbreviations(rawText: string, targetContextNorm = ''): string {
@@ -290,6 +334,20 @@ function expandClinicalAbbreviations(rawText: string, targetContextNorm = ''): s
     [/\bsarna\b/g, 'escabiosis sarna'],
     [/\bpodagra\b/g, 'artritis gotosa aguda gota podagra'],
     [/\balmorranas\b/g, 'hemorroides enfermedad hemorroidal'],
+    [/\beip\b/g, 'enfermedad inflamatoria pelvica'],
+    [/\berc\b|\birc\b/g, 'enfermedad insuficiencia renal cronica'],
+    [/\bhsa\b/g, 'hemorragia subaracnoidea'],
+    [/\beap\b/g, 'edema agudo pulmonar'],
+    [/\bptt\b/g, 'purpura trombotica trombocitopenica'],
+    [/\bgpa\b|\bwegener\b/g, 'granulomatosis poliangeitis wegener'],
+    [/\b(?:tb|tbc)\b/g, 'tuberculosis'],
+    [/\b(?:ar)\b/g, 'artritis reumatoide'],
+    [/\bpaludismo\b|\bmalaria\b/g, 'paludismo malaria plasmodium'],
+    [/\bkala\s*azar\b/g, 'leishmaniasis visceral kala azar'],
+    [/\bbilharziasis\b/g, 'esquistosomiasis bilharziasis'],
+    [/\btakotsubo\b/g, 'miocardiopatia estres takotsubo'],
+    [/\bpai\b/g, 'porfiria aguda intermitente'],
+    [/\bfeocromocitoma\b|\bfeocromo\b/g, 'feocromocitoma'],
   ];
 
   for (const [pattern, expansion] of replacements) {
@@ -737,8 +795,29 @@ function checkCriticalSafetyErrors(
     }
   }
 
-  // 24. Auditoría posológica, de vía y sobredosis letales sobre fármacos prescritos
-  const planAudit = auditMedicationPlanSafety(submission.pharmacologicalPlan || [], caseData);
+  // 23b. Bloqueo AV (1.er/2.º/3.er grado) o Bloqueo Bifascicular + fármacos frenadores nodales
+  if (
+    diagNorm.includes('bloqueo auriculoventricular') ||
+    diagNorm.includes('bloqueo av') ||
+    diagNorm.includes('bloqueo bifascicular')
+  ) {
+    if (
+      /\b(verapamilo|diltiazem|digoxina|metoprolol|propranolol|atenolol|carvedilol|bisoprolol|nebivolol|amiodarona|ivabradina)\b/.test(
+        activeRxOnly
+      )
+    ) {
+      errors.push(
+        '¡ERROR CRÍTICO CARDIOLÓGICO!: Prescripción o mantenimiento de fármacos frenadores del nodo AV/conducción (betabloqueadores, verapamilo, diltiazem, digoxina o amiodarona) en paciente con bloqueo de conducción; riesgo grave de progresión a bloqueo AV completo o asistolia.'
+      );
+    }
+  }
+
+  // 24. Auditoría posológica, de vía y sobredosis letales/acumulativas sobre fármacos prescritos y STAT
+  const planAudit = auditMedicationPlanSafety(
+    submission.pharmacologicalPlan || [],
+    caseData,
+    submission.statInterventions || []
+  );
   for (const planErr of planAudit.errors) {
     if (!errors.some((e) => normStr(e) === normStr(planErr))) {
       errors.push(planErr);
@@ -760,7 +839,7 @@ function isNonBacterialPrimaryCase(diagNorm: string): boolean {
   ) {
     return false;
   }
-  return /\b(bronquiolitis|bronquitis aguda|rinofaringitis|resfriado|gastroenteritis|laringotraqueobronquitis|crup|dengue|herpes zoster|pancreatitis aguda|reflujo gastroesofagico|erge|gastritis aguda|dispepsia funcional|intestino irritable|esguince|lumbalgia mecanica|fascitis plantar|vertigo posicional|vppb|migrana|ansiedad|depresion|episodio depresivo|tunel del carpo|vitamina b12|vitamina d|ferropenica|hipotiroidismo|hipertension arterial|diabetes mellitus|dislipidemia|sindrome metabolico|ovario poliquistico|dismenorrea|tina corporal|tinea corporis|candidiasis|dermatitis atopica|urticaria aguda|escabiosis|sarna|paralisis facial|radiculopatia|hernia inguinal|hemorroides|enfermedad hemorroidal|artritis gotosa|podagra|asma bronquial|epoc.*estable|pericarditis aguda|cefalea tensional|queratitis herpetica|glaucoma agudo|epistaxis|torsion testicular|hiperplasia prostatica|retencion aguda de orina|purpura trombocitopenica|arteritis de celulas gigantes|intoxicacion aguda)\b/.test(
+  return /\b(bronquiolitis|bronquitis aguda|rinofaringitis|resfriado|gastroenteritis|laringotraqueobronquitis|crup|dengue|herpes zoster|pancreatitis aguda|reflujo gastroesofagico|erge|gastritis aguda|dispepsia funcional|intestino irritable|esguince|lumbalgia mecanica|fascitis plantar|vertigo posicional|vppb|migrana|ansiedad|depresion|episodio depresivo|tunel del carpo|vitamina b12|vitamina d|ferropenica|hipotiroidismo|hipertension arterial|diabetes mellitus|dislipidemia|sindrome metabolico|ovario poliquistico|dismenorrea|tina corporal|tinea corporis|candidiasis|dermatitis atopica|urticaria aguda|escabiosis|sarna|paralisis facial|radiculopatia|hernia inguinal|hemorroides|enfermedad hemorroidal|artritis gotosa|podagra|asma bronquial|epoc.*estable|pericarditis aguda|cefalea tensional|queratitis herpetica|glaucoma agudo|epistaxis|torsion testicular|hiperplasia prostatica|retencion aguda de orina|purpura trombocitopenica|arteritis de celulas gigantes|intoxicacion aguda|bloqueo auriculoventricular|bloqueo completo de rama|bloqueo bifascicular|mobitz|wenckebach)\b/.test(
     diagNorm
   );
 }
@@ -2200,15 +2279,16 @@ export function buildDidacticEvaluation(
   const preDiagMatchRatio = (submission.primaryDiagnosis || '').trim()
     ? computeClinicalDiagnosisMatch(submission.primaryDiagnosis || '', solution.correctDiagnosis || '').ratio
     : 0;
-  const highCostUnneededStudies = isSimplePrimaryWorkupCase(diagNormForStudies)
-    ? totalUnlockedStudies.filter(
-        (s) =>
-          !s.isAbnormal &&
-          /\b(tomografia|tac |resonancia|rmn|endoscopia|colonoscopia|broncoscopia)\b/.test(
-            normStr(s.name)
-          )
-      )
-    : [];
+  const highCostUnneededStudies =
+    isSimplePrimaryWorkupCase(diagNormForStudies) || isSelfLimitingOrBenignOutpatientCase(caseData)
+      ? totalUnlockedStudies.filter(
+          (s) =>
+            !s.isAbnormal &&
+            /\b(tomografia|tac |resonancia|rmn|endoscopia|colonoscopia|broncoscopia)\b/.test(
+              normStr(s.name)
+            )
+        )
+      : [];
 
   const isPureClinicalStewardshipCase =
     coreAbnormalStudies.length === 0 &&
@@ -2274,7 +2354,7 @@ export function buildDidacticEvaluation(
         : 'No se solicitaron estudios complementarios.'
       : highCostUnneededStudies.length > 0
         ? `Uso racional de recursos: solicitaste estudio de alta complejidad/irradiación no indicado inicialmente en primer nivel (${highCostUnneededStudies.map((s) => s.name).join(', ')}).`
-        : orderedAllBlindly || unnecessaryCount >= 4
+        : orderedAllBlindly || unnecessaryCount >= 3
           ? 'Se detectó solicitud excesiva de estudios ("escopetazo diagnóstico") sin discriminación clínica pre-test.'
           : 'Selección racional de estudios sin sobreutilización de imagen avanzada o pruebas innecesarias.';
 
@@ -2339,7 +2419,8 @@ export function buildDidacticEvaluation(
     ...(solution.differentialDiagnoses || []).map((d) => computeClinicalDiagnosisMatch(userDiag, d).ratio)
   );
   const justifLen = (submission.clinicalJustification || '').trim().length;
-  const justifBonus = isExpressDiagOnly ? 2 : justifLen >= 50 ? 2 : justifLen >= 20 ? 1 : 0;
+  const justifBonus =
+    isExpressDiagOnly || !isEcoeMode ? 2 : justifLen >= 50 ? 2 : justifLen >= 20 ? 1 : 0;
 
   let diagScore = 0;
   if (!userDiag.trim()) {
@@ -2351,7 +2432,7 @@ export function buildDidacticEvaluation(
   } else if (diagMatchRatio >= 0.25 || diffHitRatio >= 0.45) {
     diagScore = Math.min(15, 12 + justifBonus);
   } else {
-    diagScore = !isExpressDiagOnly && justifLen >= 40 ? 2 : 0;
+    diagScore = isEcoeMode && !isExpressDiagOnly && justifLen >= 40 ? 2 : 0;
   }
 
   const diagDetail: RubricCategoryDetail = {
@@ -2369,13 +2450,15 @@ export function buildDidacticEvaluation(
       ...(diagMatchResult.matchedSynonymLabel
         ? [`Se reconoció tu terminología/sigla clínica (${diagMatchResult.matchedSynonymLabel}).`]
         : []),
-      ...(!isExpressDiagOnly && justifLen >= 25 ? ['Redactaste una justificación clínica para argumentar tu hipótesis.'] : []),
+      ...(isEcoeMode && !isExpressDiagOnly && justifLen >= 25
+        ? ['Redactaste una justificación clínica para argumentar tu hipótesis.']
+        : []),
     ],
     missingOrImprove: [
       ...(diagMatchRatio < 0.72
         ? [`El diagnóstico completo esperado es: "${correctDiag}". Especifica etiología, fase clínica o signos de alarma.`]
         : []),
-      ...(!isExpressDiagOnly && justifLen < 35
+      ...(isEcoeMode && !isExpressDiagOnly && justifLen < 35
         ? ['Faltó redactar una justificación clínica breve que integre anamnesis, examen físico y paraclínicos.']
         : []),
     ],
@@ -2436,7 +2519,11 @@ export function buildDidacticEvaluation(
 
   // 6. TRATAMIENTO Y RÉGIMEN FARMACOLÓGICO (0 a 15 pts) — Normativa Nicaragüense (MINSA LBM) + Estándar Internacional
   const userRx = (submission.pharmacologicalPlan || []).filter((r) => (r.drug || '').trim().length >= 2);
-  const planAuditForScoring = auditMedicationPlanSafety(userRx, caseData);
+  const planAuditForScoring = auditMedicationPlanSafety(
+    userRx,
+    caseData,
+    submission.statInterventions || []
+  );
   const safeUserRx = userRx.filter((r) => !planAuditForScoring.unsafeMedicationIds.has(r.id));
   const optRx = solution.optimalTreatment?.pharmacological || [];
   const activeGeneralForRx = stripNegatedMedicationClauses(submission.generalMeasures || '');
@@ -2479,7 +2566,7 @@ export function buildDidacticEvaluation(
   let treatScore = 0;
   if (userRx.length === 0 && !hasGeneralMeasures) {
     treatScore = 0;
-  } else if (optRx.length > 0) {
+  } else if (optRx.length > 0 && denominatorRxCount > 0) {
     let drugRatio = Math.min(1, matchedDrugs.length / denominatorRxCount);
     if (denominatorRxCount >= 3 && matchedDrugs.length >= denominatorRxCount - 1) {
       drugRatio = Math.max(drugRatio, 0.9);
@@ -2493,8 +2580,16 @@ export function buildDidacticEvaluation(
     const generalBonus = hasGeneralMeasures ? 2 : 0;
     const effortFloor = safeUserRx.length > 0 && matchedDrugs.length === 0 ? 1 : 0;
     treatScore = Math.min(15, Math.round(drugRatio * 10) + posologyBonus + generalBonus + effortFloor);
+  } else if (optRx.length > 0 && denominatorRxCount === 0) {
+    // Todos los fármacos de referencia eran opcionales (p. ej. rescate STAT condicional)
+    treatScore = hasGeneralMeasures ? (matchedDrugs.length > 0 || safeUserRx.length === 0 ? 15 : 13) : 6;
   } else {
-    treatScore = Math.min(15, safeUserRx.length * 4 + (hasGeneralMeasures ? 2 : 0));
+    // Casos estrictamente no farmacológicos / vigilancia ambulatoria (optRx.length === 0)
+    treatScore = hasGeneralMeasures
+      ? safeUserRx.length === 0
+        ? 15
+        : Math.max(10, 14 - safeUserRx.length * 2)
+      : Math.min(10, safeUserRx.length * 3);
   }
 
   const criticalSafetyErrors = checkCriticalSafetyErrors(submission, caseData);
@@ -2570,7 +2665,7 @@ export function buildDidacticEvaluation(
   for (const adv of adverseStatEvents) {
     const commentNorm = normStr(adv.comment);
     const isSeverePhysiologicStatHarm =
-      /\b(crisis adrenergica|crisis hipertensiva|descarga adrenergica|broncoespasmo severo|depresion respiratoria|paro respiratorio|paro cardiaco|fibrilacion ventricular|hipotension iatrogenica|shock vasoplejico|choque cardiogenico|descenso tensional demasiado brusco|hipoglucemia iatrogenica|descenso glucemico excesivo|sobredosis|neuroglucopen|coma|hipermagnesemia|agravamiento de edema|sobrecarga hidrica|narcosis hipercapnica|hemorragia|anafilactica|nefrotoxicidad|wernicke|perforacion|contraindicacion|error critico|arritmia|necrosis hepatica)\b/.test(
+      /\b(crisis adrenergica|crisis hipertensiva|descarga adrenergica|broncoespasmo severo|depresion respiratoria|paro respiratorio|paro cardiaco|fibrilacion ventricular|hipotension iatrogenica|shock vasoplejico|choque cardiogenico|descenso tensional demasiado brusco|hipoglucemia iatrogenica|descenso glucemico excesivo|sobredosis|neuroglucopen|coma|hipermagnesemia|agravamiento de edema|sobrecarga hidrica|narcosis hipercapnica|hemorragia|anafilactica|nefrotoxicidad|wernicke|perforacion|contraindicacion|error critico|arritmia|necrosis hepatica|acumulacion|acumulativa|toxicidad|salicilismo|torsades|hiperkalemia|hipercalcemia|anticolinergica|extrapiramidal|hemorragia digestiva|insuficiencia hepatica|falla hepatica|encharcamiento|edema agudo de pulmon|hiperosmolaridad)\b/.test(
         commentNorm
       );
     if (!isSeverePhysiologicStatHarm) continue;
@@ -3128,18 +3223,19 @@ export function buildDidacticEvaluation(
     criticalSafetyErrors: finalCriticalErrors,
     feedback: {
       diagnosisAccuracyComment: diagDetail.whyScore,
-      reasoningEvaluation: isExpressDiagOnly
-        ? `Fisiopatología de referencia de "${solution.correctDiagnosis}": ${solution.pathophysiology}`
-        : (() => {
-            if (justifLen >= 25) {
-              return `Tu justificación ("${submission.clinicalJustification.slice(0, 220)}") fue contrastada contra la fisiopatología de referencia: ${solution.pathophysiology}`;
-            }
-            const abnormalVitals = getAbnormalVitalSignDescriptions(caseData);
-            if (abnormalVitals.length > 0) {
-              return `No redactaste una justificación clínica amplia. Es fundamental explicar cómo los signos vitales alterados (${abnormalVitals.join(', ')}), los hallazgos físicos y los paraclínicos convergen en "${solution.correctDiagnosis}".`;
-            }
-            return `No redactaste una justificación clínica amplia. Aunque sus signos vitales se encuentran estables y dentro de parámetros normales (lo cual descarta compromiso hemodinámico o sistémico agudo), es fundamental explicar cómo los síntomas de la historia clínica, los hallazgos físicos clave y los paraclínicos respaldan "${solution.correctDiagnosis}".`;
-          })(),
+      reasoningEvaluation:
+        isExpressDiagOnly || !isEcoeMode
+          ? `Fisiopatología de referencia de "${solution.correctDiagnosis}": ${solution.pathophysiology}`
+          : (() => {
+              if (justifLen >= 25) {
+                return `Tu justificación ("${submission.clinicalJustification.slice(0, 220)}") fue contrastada contra la fisiopatología de referencia: ${solution.pathophysiology}`;
+              }
+              const abnormalVitals = getAbnormalVitalSignDescriptions(caseData);
+              if (abnormalVitals.length > 0) {
+                return `No redactaste una justificación clínica amplia. Es fundamental explicar cómo los signos vitales alterados (${abnormalVitals.join(', ')}), los hallazgos físicos y los paraclínicos convergen en "${solution.correctDiagnosis}".`;
+              }
+              return `No redactaste una justificación clínica amplia. Aunque sus signos vitales se encuentran estables y dentro de parámetros normales (lo cual descarta compromiso hemodinámico o sistémico agudo), es fundamental explicar cómo los síntomas de la historia clínica, los hallazgos físicos clave y los paraclínicos respaldan "${solution.correctDiagnosis}".`;
+            })(),
       differentialEvaluation: finalDiffDetail.whyScore,
       workupCritique: studyDetail.whyScore,
       treatmentCritique: isExpressDiagOnly
