@@ -22,10 +22,19 @@ import { ClinicalOutcomeModal } from './components/ClinicalOutcomeModal';
 import { ImmediateDeathModal, ImmediateDeathAlertData } from './components/ImmediateDeathModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { TurnoMedicoView } from './components/TurnoMedicoView';
+import { ProgressiveExamView } from './components/ProgressiveExamView';
+import {
+  ExitSimulationModal,
+  ExitSimulationPromptInfo,
+} from './components/ExitSimulationModal';
 
 import { applyStatIntervention, StatApplyInput } from './utils/statStabilization';
 import { generateContextualPatientReply, PatientChatPayload } from './engine/patientEngine';
 import { getLocalCaseLibrary, selectLocalClinicalCase, selectTurnoMedicoCases } from './engine/caseGenerator';
+import {
+  buildProgressiveExamSession,
+  buildStationHistoryRecords,
+} from './engine/progressiveExamEngine';
 import { evaluateClinicalEvolutionStep, sampleLiveMonitorTelemetry } from './engine/clinicalEvolution';
 import { buildLivePhysicalExams, buildLiveStudies } from './engine/liveClinicalSync';
 import {
@@ -72,6 +81,11 @@ import {
   TurnoMedicoConfig,
   TurnoPatientResult,
 } from './types/clinical';
+import {
+  ProgressiveExamConfig,
+  ProgressiveExamEvaluation,
+  ProgressiveExamStation,
+} from './types/exam';
 
 import {
   MessageSquare,
@@ -101,8 +115,10 @@ const URGENCIAS_WINDOW_SECONDS = 8 * 60;
 const EXAMEN_WINDOW_SECONDS = 12 * 60;
 
 export default function App() {
-  // General Interface vs Active Clinical Simulation vs Turno Médico Express
-  const [activeView, setActiveView] = useState<'lobby' | 'simulation' | 'turno_medico'>('lobby');
+  // General Interface vs Active Clinical Simulation vs Turno Médico Express vs Examen Progresivo
+  const [activeView, setActiveView] = useState<
+    'lobby' | 'simulation' | 'turno_medico' | 'examen_progresivo'
+  >('lobby');
   const [turnoConfig, setTurnoConfig] = useState<TurnoMedicoConfig>({
     patientCount: 5,
     profile: 'mixto',
@@ -111,6 +127,18 @@ export default function App() {
   });
   const [turnoCases, setTurnoCases] = useState<ClinicalCase[]>([]);
   const [turnoSessionKey, setTurnoSessionKey] = useState<number>(1);
+  const [examConfig, setExamConfig] = useState<ProgressiveExamConfig>({
+    difficulty: 'progresivo',
+    specialty: 'aleatorio',
+    stationCount: 3,
+  });
+  const [examStations, setExamStations] = useState<ProgressiveExamStation[]>([]);
+  const [examSessionKey, setExamSessionKey] = useState<number>(1);
+  const [isProgressiveExamFinished, setIsProgressiveExamFinished] = useState<boolean>(false);
+  const [pendingExitRequest, setPendingExitRequest] = useState<{
+    info: ExitSimulationPromptInfo;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Current Case State
   const [currentCase, setCurrentCase] = useState<ClinicalCase>(() =>
@@ -158,9 +186,9 @@ export default function App() {
     ttsEnabled: false,
     updatedAt: '',
   });
-  const [lobbyClassification, setLobbyClassification] = useState<GameMode | 'turno_medico'>(
-    'medico_general'
-  );
+  const [lobbyClassification, setLobbyClassification] = useState<
+    GameMode | 'turno_medico' | 'examen_progresivo'
+  >('medico_general');
   const [isStorageHydrated, setIsStorageHydrated] = useState(false);
 
   // Modals & Dramatic Outcome Stage
@@ -179,6 +207,11 @@ export default function App() {
     statInterventions.some((s) => s.isImmediateDeath) ||
     liveVitalSigns.heartRate === 0 ||
     (liveVitalSigns.bloodPressure || '').startsWith('0/');
+
+  const isActiveSimulationInProgress =
+    (activeView === 'simulation' && !evaluationResult) ||
+    activeView === 'turno_medico' ||
+    (activeView === 'examen_progresivo' && !isProgressiveExamFinished);
 
   const livePhysicalExams = useMemo(
     () => buildLivePhysicalExams(currentCase, liveVitalSigns, statInterventions, evolutionState),
@@ -633,6 +666,47 @@ export default function App() {
       res.evaluation.userSummary?.primaryDiagnosis || '',
       false
     );
+  };
+
+  const handleStartProgressiveExam = (config: ProgressiveExamConfig) => {
+    const stations = buildProgressiveExamSession(config, customCases, recentCaseIds);
+    setExamConfig(config);
+    setExamStations(stations);
+    setExamSessionKey((k) => k + 1);
+    setIsProgressiveExamFinished(false);
+    setActiveView('examen_progresivo');
+  };
+
+  const handleExamCompleted = (evalRes: ProgressiveExamEvaluation) => {
+    setIsProgressiveExamFinished(true);
+    const records = buildStationHistoryRecords(evalRes);
+    if (records.length === 0) return;
+
+    setHistory((prev) => [...records, ...prev]);
+
+    const newIds = records.map((r) => r.caseId).filter(Boolean);
+    const maxRecent = Math.max(10, ALL_CURATED_CASES.length + customCases.length - 1);
+    const nextSeenIds = [
+      ...recentCaseIds.filter((id) => !newIds.includes(id)),
+      ...newIds,
+    ].slice(-maxRecent);
+    setRecentCaseIds(nextSeenIds);
+
+    setCompletedCaseIds((prevCompleted) => {
+      const updatedCompleted = Array.from(new Set([...prevCompleted, ...newIds]));
+      void saveStoredProgress({
+        id: 'default',
+        seenCaseIds: nextSeenIds,
+        seenDiagnoses: recentDiagnoses,
+        completedCaseIds: updatedCompleted,
+        updatedAt: new Date().toISOString(),
+      });
+      return updatedCompleted;
+    });
+
+    for (const rec of records) {
+      void saveHistoryRecord(rec);
+    }
   };
 
   // Deterministic 100% Offline Virtual Patient Chat Handler
@@ -1128,10 +1202,56 @@ export default function App() {
           ? 'calculators'
           : 'home';
 
-  const handleHeaderModeChange = (mode: GameMode | 'turno_medico') => {
+  const buildExitPromptInfo = (leaveButtonLabel: string): ExitSimulationPromptInfo => {
+    if (activeView === 'turno_medico') {
+      return {
+        modeLabel: 'Turno Médico en Curso',
+        title: '¿Salir del Turno Médico?',
+        description:
+          'Estás atendiendo una guardia multi-paciente. Si sales ahora, se interrumpirá la cola de pacientes pendientes.',
+        contextLine: `Turno de ${turnoCases.length} pacientes · Guardia activa`,
+        leaveButtonLabel,
+      };
+    }
+
+    if (activeView === 'examen_progresivo') {
+      return {
+        modeLabel: 'Examen Clínico Progresivo',
+        title: '¿Salir del Examen Progresivo?',
+        description:
+          'Aún no has completado todas las estaciones del bloque. Si sales ahora, no se guardará tu progreso ni el debriefing.',
+        contextLine: `Bloque de ${examStations.length} estaciones en curso`,
+        leaveButtonLabel,
+      };
+    }
+
+    const mins = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
+    const secs = (elapsedSeconds % 60).toString().padStart(2, '0');
+    return {
+      modeLabel: 'Simulación Clínica en Curso',
+      title: '¿Salir de la consulta actual?',
+      description:
+        'Tienes un expediente clínico abierto que aún no ha sido evaluado. Si sales ahora sin enviar, esta atención quedará interrumpida.',
+      contextLine: `Paciente: ${currentCase.patientInfo.name} · Tiempo: ${mins}:${secs} · Estudios: ${unlockedStudyIds.length}/${liveStudies.length}`,
+      leaveButtonLabel,
+    };
+  };
+
+  const requestSafeNavigation = (leaveButtonLabel: string, action: () => void) => {
+    if (!isActiveSimulationInProgress) {
+      action();
+      return;
+    }
+    setPendingExitRequest({
+      info: buildExitPromptInfo(leaveButtonLabel),
+      onConfirm: action,
+    });
+  };
+
+  const performHeaderModeChange = (mode: GameMode | 'turno_medico' | 'examen_progresivo') => {
     setLobbyClassification(mode);
     if (mode === 'turno_medico') {
-      if (activeView === 'simulation') {
+      if (activeView !== 'lobby') {
         handleStartTurnoMedico({
           ...turnoConfig,
           specialty: userPreferences.preferredSpecialty,
@@ -1140,11 +1260,90 @@ export default function App() {
       return;
     }
 
+    if (mode === 'examen_progresivo') {
+      if (activeView !== 'lobby') {
+        handleStartProgressiveExam({
+          ...examConfig,
+          specialty: userPreferences.preferredSpecialty,
+        });
+      }
+      return;
+    }
+
     handleUpdatePreferences({ preferredMode: mode });
-    if ((activeView === 'simulation' && mode !== currentCase.mode) || activeView === 'turno_medico') {
+    if (
+      (activeView === 'simulation' && mode !== currentCase.mode) ||
+      activeView === 'turno_medico' ||
+      activeView === 'examen_progresivo'
+    ) {
       void handleSelectCase(mode, userPreferences.preferredSpecialty);
     }
   };
+
+  const handleHeaderModeChange = (mode: GameMode | 'turno_medico' | 'examen_progresivo') => {
+    const currentEffectiveMode =
+      activeView === 'turno_medico'
+        ? 'turno_medico'
+        : activeView === 'examen_progresivo'
+          ? 'examen_progresivo'
+          : activeView === 'simulation'
+            ? currentCase.mode
+            : lobbyClassification;
+
+    if (mode === currentEffectiveMode) return;
+
+    requestSafeNavigation('Sí, cambiar modalidad', () => {
+      if (activeView === 'simulation') {
+        void clearActiveSimulationSession();
+      }
+      performHeaderModeChange(mode);
+    });
+  };
+
+  // Protect against accidental browser Back button or tab close/reload while a simulation is active
+  const activeSimGuardRef = useRef(false);
+  const simHistoryPushedRef = useRef(false);
+  const requestExitRef = useRef<() => void>(() => {});
+  activeSimGuardRef.current = isActiveSimulationInProgress;
+  requestExitRef.current = () => {
+    requestSafeNavigation('Sí, salir al inicio', () => {
+      simHistoryPushedRef.current = false;
+      if (activeView === 'simulation') {
+        void clearActiveSimulationSession();
+      }
+      setActiveView('lobby');
+    });
+  };
+
+  useEffect(() => {
+    if (isActiveSimulationInProgress && !simHistoryPushedRef.current) {
+      window.history.pushState({ simGuard: true }, '');
+      simHistoryPushedRef.current = true;
+    } else if (!isActiveSimulationInProgress) {
+      simHistoryPushedRef.current = false;
+    }
+  }, [isActiveSimulationInProgress]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (activeSimGuardRef.current) {
+        window.history.pushState({ simGuard: true }, '');
+        requestExitRef.current();
+      }
+    };
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeSimGuardRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   const allSectionIds = [
     'anamnesis',
@@ -1243,19 +1442,30 @@ export default function App() {
       <Navbar
         activeView={activeView}
         activeSection={activeNavSection}
-        onGoHome={() => setActiveView('lobby')}
+        onGoHome={() =>
+          requestSafeNavigation('Sí, salir al inicio', () => {
+            if (activeView === 'simulation') {
+              void clearActiveSimulationSession();
+            }
+            setActiveView('lobby');
+          })
+        }
         onOpenCasesLibrary={handleOpenCasesLibrary}
         onOpenHistoryModal={() => setHistoryModalOpen(true)}
         onOpenGuideModal={() => setGuideModalOpen(true)}
         onOpenCalculatorsModal={() => setCalculatorsModalOpen(true)}
-        onRestartCase={() => setupCase(currentCase)}
+        onRestartCase={() =>
+          requestSafeNavigation('Sí, reiniciar caso', () => setupCase(currentCase))
+        }
         onSelectMode={handleHeaderModeChange}
         currentMode={
           activeView === 'turno_medico'
             ? 'turno_medico'
-            : activeView === 'simulation'
-              ? currentCase.mode
-              : lobbyClassification
+            : activeView === 'examen_progresivo'
+              ? 'examen_progresivo'
+              : activeView === 'simulation'
+                ? currentCase.mode
+                : lobbyClassification
         }
         currentSpecialty={currentCase.specialty}
         historyCount={history.length}
@@ -1272,6 +1482,19 @@ export default function App() {
             onPatientResolved={handleTurnoPatientResolved}
           />
         </div>
+      ) : activeView === 'examen_progresivo' ? (
+        <div className="flex-1 pb-12">
+          <ProgressiveExamView
+            key={examSessionKey}
+            config={examConfig}
+            stations={examStations}
+            onExitToLobby={() =>
+              requestSafeNavigation('Sí, salir del examen', () => setActiveView('lobby'))
+            }
+            onStartNewExam={handleStartProgressiveExam}
+            onExamCompleted={handleExamCompleted}
+          />
+        </div>
       ) : (
         <div className="flex-1 max-w-5xl w-full min-w-0 mx-auto px-3 sm:px-5 pt-4 sm:pt-6 pb-8 md:pb-10">
           <main className="w-full min-w-0 space-y-4">
@@ -1279,6 +1502,7 @@ export default function App() {
               <HomeDashboard
                 onStartSimulation={handleSelectCase}
                 onStartTurnoMedico={handleStartTurnoMedico}
+                onStartProgressiveExam={handleStartProgressiveExam}
                 isLoading={isGeneratingCase}
                 totalCasesCount={totalLibraryCount}
                 initialMode={userPreferences.preferredMode}
@@ -1906,6 +2130,17 @@ export default function App() {
         onContinueToAudit={() => {
           setPendingOutcome(null);
           focusSection('audit');
+        }}
+      />
+
+      <ExitSimulationModal
+        isOpen={Boolean(pendingExitRequest)}
+        info={pendingExitRequest?.info || null}
+        onStay={() => setPendingExitRequest(null)}
+        onConfirmLeave={() => {
+          const confirmFn = pendingExitRequest?.onConfirm;
+          setPendingExitRequest(null);
+          confirmFn?.();
         }}
       />
     </div>

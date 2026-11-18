@@ -15,7 +15,7 @@ import { HospitalSelect } from './HospitalSelect';
 export type NavSectionKey = 'home' | 'cases' | 'history' | 'guides' | 'calculators';
 
 interface NavbarProps {
-  activeView: 'lobby' | 'simulation' | 'turno_medico';
+  activeView: 'lobby' | 'simulation' | 'turno_medico' | 'examen_progresivo';
   activeSection: NavSectionKey;
   onGoHome: () => void;
   onOpenCasesLibrary: () => void;
@@ -23,13 +23,17 @@ interface NavbarProps {
   onOpenGuideModal: () => void;
   onOpenCalculatorsModal: () => void;
   onRestartCase: () => void;
-  onSelectMode: (mode: GameMode | 'turno_medico') => void;
-  currentMode: GameMode | 'turno_medico';
+  onSelectMode: (mode: GameMode | 'turno_medico' | 'examen_progresivo') => void;
+  currentMode: GameMode | 'turno_medico' | 'examen_progresivo';
   currentSpecialty: Specialty;
   historyCount: number;
 }
 
-const MODE_OPTIONS: Array<{ value: GameMode | 'turno_medico'; label: string; description: string }> = [
+const MODE_OPTIONS: Array<{
+  value: GameMode | 'turno_medico' | 'examen_progresivo';
+  label: string;
+  description: string;
+}> = [
   {
     value: 'principiante',
     label: 'Modo Principiante',
@@ -59,6 +63,11 @@ const MODE_OPTIONS: Array<{ value: GameMode | 'turno_medico'; label: string; des
     value: 'turno_medico',
     label: 'Modo Turno Médico (Express)',
     description: 'Cola ágil de múltiples pacientes en una sola pantalla.',
+  },
+  {
+    value: 'examen_progresivo',
+    label: 'Examen Progresivo (Opción Múltiple)',
+    description: 'Estaciones progresivas de diagnóstico, estudios, fisiopatología y farmacología.',
   },
 ];
 
@@ -160,7 +169,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               ariaLabel="Clasificación de simulación"
               panelTitle="Clasificación de Simulación"
               value={currentMode}
-              onChange={(val) => onSelectMode(val as GameMode | 'turno_medico')}
+              onChange={(val) =>
+                onSelectMode(val as GameMode | 'turno_medico' | 'examen_progresivo')
+              }
               options={MODE_OPTIONS}
               className="flex-1 min-w-0 md:flex-none md:w-56 lg:w-64"
             />

@@ -7,6 +7,7 @@ import {
   TurnoProfile,
   TurnoTimerMode,
 } from '../types/clinical';
+import { ExamDifficultyTier, ProgressiveExamConfig } from '../types/exam';
 import { ALL_CURATED_CASES } from '../data/allCases';
 import { HospitalSelect } from './HospitalSelect';
 import { KNOWLEDGE_BASE_DATE, KNOWLEDGE_BASE_VERSION } from '../knowledge/clinicalKnowledgeBase';
@@ -27,12 +28,13 @@ import {
 interface HomeDashboardProps {
   onStartSimulation: (mode: GameMode, specialty: Specialty, caseId?: string) => Promise<void>;
   onStartTurnoMedico: (config: TurnoMedicoConfig) => void;
+  onStartProgressiveExam: (config: ProgressiveExamConfig) => void;
   isLoading: boolean;
   totalCasesCount?: number;
   initialMode?: GameMode;
   initialSpecialty?: Specialty;
-  externalClassification?: GameMode | 'turno_medico';
-  onClassificationChange?: (val: GameMode | 'turno_medico') => void;
+  externalClassification?: GameMode | 'turno_medico' | 'examen_progresivo';
+  onClassificationChange?: (val: GameMode | 'turno_medico' | 'examen_progresivo') => void;
   onPreferencesChange?: (mode: GameMode, specialty: Specialty) => void;
   completedCaseIds?: string[];
   customCaseIds?: string[];
@@ -41,7 +43,7 @@ interface HomeDashboardProps {
   onRetryCase?: (caseId: string, mode?: GameMode) => Promise<void>;
 }
 
-type ClassificationKey = GameMode | 'turno_medico';
+type ClassificationKey = GameMode | 'turno_medico' | 'examen_progresivo';
 
 const MODES: Array<{
   id: GameMode;
@@ -141,6 +143,7 @@ const SPECIALTIES: Array<{ id: Specialty; name: string }> = [
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onStartSimulation,
   onStartTurnoMedico,
+  onStartProgressiveExam,
   isLoading,
   totalCasesCount,
   initialMode = 'medico_general',
@@ -164,11 +167,16 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [turnoProfile, setTurnoProfile] = useState<TurnoProfile>('mixto');
   const [turnoTimer, setTurnoTimer] = useState<TurnoTimerMode>('untimed');
 
+  const [examDifficulty, setExamDifficulty] = useState<ExamDifficultyTier>('progresivo');
+  const [examStationCount, setExamStationCount] = useState<3 | 5>(3);
+
   useEffect(() => {
     if (externalClassification) {
       setClassification(externalClassification);
     } else {
-      setClassification((prev) => (prev === 'turno_medico' ? prev : initialMode));
+      setClassification((prev) =>
+        prev === 'turno_medico' || prev === 'examen_progresivo' ? prev : initialMode
+      );
     }
   }, [initialMode, externalClassification]);
 
@@ -178,8 +186,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
   const libraryCount = totalCasesCount ?? ALL_CURATED_CASES.length;
   const isTurno = classification === 'turno_medico';
-  const activeModeObj = !isTurno ? MODES.find((m) => m.id === classification) || MODES[1] : null;
-  const ActiveIcon = isTurno ? Zap : activeModeObj?.icon || Stethoscope;
+  const isProgressiveExam = classification === 'examen_progresivo';
+  const activeModeObj =
+    !isTurno && !isProgressiveExam ? MODES.find((m) => m.id === classification) || MODES[1] : null;
+  const ActiveIcon = isTurno ? Zap : isProgressiveExam ? GraduationCap : activeModeObj?.icon || Stethoscope;
 
   const { resolvedCount, masteryPct, averageScore, pendingReviewCase } = useMemo(() => {
     const libraryIds = new Set([
@@ -228,14 +238,14 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const handleClassificationChange = (val: ClassificationKey) => {
     setClassification(val);
     onClassificationChange?.(val);
-    if (val !== 'turno_medico') {
+    if (val !== 'turno_medico' && val !== 'examen_progresivo') {
       onPreferencesChange?.(val, selectedSpecialty);
     }
   };
 
   const handleSpecialtyChange = (val: Specialty) => {
     setSelectedSpecialty(val);
-    if (classification !== 'turno_medico') {
+    if (classification !== 'turno_medico' && classification !== 'examen_progresivo') {
       onPreferencesChange?.(classification, val);
     }
   };
@@ -247,6 +257,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         profile: turnoProfile,
         timerMode: turnoTimer,
         specialty: selectedSpecialty,
+      });
+    } else if (classification === 'examen_progresivo') {
+      onStartProgressiveExam({
+        difficulty: examDifficulty,
+        specialty: selectedSpecialty,
+        stationCount: examStationCount,
       });
     } else {
       void onStartSimulation(classification, selectedSpecialty);
@@ -263,6 +279,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       value: 'turno_medico',
       label: 'Turno Médico · Guardia Express Multi-Paciente',
       description: 'Cola ágil de 3, 5 o 7 pacientes en una sola pantalla.',
+    },
+    {
+      value: 'examen_progresivo',
+      label: 'Examen Progresivo · Opción Múltiple y Casos Escalonados',
+      description: 'Estaciones progresivas de diagnóstico, estudios, fisiopatología y farmacología.',
     },
   ];
 
@@ -400,6 +421,44 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </div>
           )}
 
+          {/* Conditional Progressive Exam Selectors */}
+          {isProgressiveExam && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-[#F0F7F2] border border-[#CFE4D6]">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1F4B3A] block">
+                  Nivel de Complejidad Clínica
+                </label>
+                <HospitalSelect
+                  variant="compact"
+                  panelTitle="Nivel del Examen"
+                  value={examDifficulty}
+                  onChange={(val) => setExamDifficulty(val as ExamDifficultyTier)}
+                  options={[
+                    { value: 'progresivo', label: 'Progresivo (General → Urgencias → Residencia)' },
+                    { value: 'medico_general', label: 'Nivel Médico General' },
+                    { value: 'urgencias', label: 'Nivel Urgencias y Guardia' },
+                    { value: 'residente', label: 'Nivel Residencia / Especialización' },
+                  ]}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-[#1F4B3A] block">
+                  Extensión del Bloque
+                </label>
+                <HospitalSelect
+                  variant="compact"
+                  panelTitle="Cantidad de Estaciones"
+                  value={String(examStationCount)}
+                  onChange={(val) => setExamStationCount(Number(val) as 3 | 5)}
+                  options={[
+                    { value: '3', label: '3 estaciones (12 reactivos progresivos)' },
+                    { value: '5', label: '5 estaciones (20 reactivos progresivos)' },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Concise Clinical Mode Summary */}
           <div className="rounded-xl border border-[#E2EAE4] bg-[#F8FBF9] p-4 flex items-start gap-3.5">
             <div
@@ -413,12 +472,35 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div className="font-bold text-[#263A32] text-sm">
                 {isTurno
                   ? 'Guardia Multi-Paciente · Turno Médico Express'
-                  : activeModeObj?.title}
+                  : isProgressiveExam
+                    ? 'Examen Clínico Progresivo · Opción Múltiple No Trivial'
+                    : activeModeObj?.title}
               </div>
               {isTurno ? (
                 <p className="text-[#55685F] leading-relaxed">
                   Atiende una cola de {turnoCount} pacientes en una sola pantalla enfocada en triage, exploración directa, estabilización STAT opcional y diagnóstico principal.
                 </p>
+              ) : isProgressiveExam ? (
+                <ul className="space-y-1 text-[#55685F]">
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#2F7A63] font-bold">·</span>
+                    <span>
+                      Cada estación avanza en 4 pasos (diagnóstico, interpretación de estudios, fisiopatología causal y farmacología segura) con distractores clínicos reales.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#2F7A63] font-bold">·</span>
+                    <span>
+                      Nunca revela respuestas antes de confirmar y penaliza errores críticos de seguridad (regla de no compensación).
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#2F7A63] font-bold">·</span>
+                    <span>
+                      Al finalizar genera la revisión docente completa de 12 puntos con referencias verificadas.
+                    </span>
+                  </li>
+                </ul>
               ) : (
                 <ul className="space-y-1 text-[#55685F]">
                   {activeModeObj?.details.map((line, i) => (
@@ -452,13 +534,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               />
             </div>
 
-            {(!isTurno && onStartNextUnseen) || (pendingReviewCase && onRetryCase) ? (
+            {(!isTurno && !isProgressiveExam && onStartNextUnseen) || (pendingReviewCase && onRetryCase) ? (
               <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 pt-0.5">
-                {!isTurno && onStartNextUnseen && (
+                {!isTurno && !isProgressiveExam && onStartNextUnseen && (
                   <button
                     type="button"
                     disabled={isLoading}
-                    onClick={() => void onStartNextUnseen(classification, selectedSpecialty)}
+                    onClick={() => void onStartNextUnseen(classification as GameMode, selectedSpecialty)}
                     className="w-full sm:w-auto max-w-full min-w-0 min-h-[40px] px-3.5 py-2 rounded-xl bg-white border border-[#CFE4D6] hover:border-[#43866B] hover:bg-[#E4F1E8]/50 disabled:opacity-50 text-xs font-semibold text-[#1F4B3A] flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer transition-colors"
                   >
                     <PlayCircle className="w-4 h-4 text-[#2F7A63] shrink-0" />
@@ -499,7 +581,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                   ? 'Preparando Expediente...'
                   : isTurno
                     ? `Iniciar Turno (${turnoCount} Pacientes)`
-                    : 'Comenzar Simulación'}
+                    : isProgressiveExam
+                      ? `Iniciar Examen Progresivo (${examStationCount} Estaciones)`
+                      : 'Comenzar Simulación'}
               </span>
             </button>
           </div>

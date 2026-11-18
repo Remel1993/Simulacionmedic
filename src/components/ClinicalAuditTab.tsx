@@ -1298,6 +1298,56 @@ export const ClinicalAuditTab: React.FC<ClinicalAuditTabProps> = ({
           </div>
         </div>
 
+        {/* 5b. Síntesis de Errores Cometidos, Riesgos Clínicos y Conducta Esperada (Puntos 8-10) */}
+        <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl p-4 space-y-3 text-xs">
+          <div className="flex items-center gap-2 text-[#263A32] font-bold text-xs uppercase tracking-wider">
+            <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>Síntesis Docente: Errores, Riesgos y Conducta que Debió Realizarse</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border border-[#E2EAE4] rounded-xl p-3 space-y-1.5">
+              <span className="font-bold text-[#263A32] block">8. Errores u omisiones detectadas</span>
+              <ul className="space-y-1 text-[#55685F]">
+                {(criticalSafetyErrors.length > 0
+                  ? criticalSafetyErrors
+                  : rubricItems.flatMap((r) => r.detail?.missingOrImprove || []).slice(0, 3)
+                ).length > 0 ? (
+                  (criticalSafetyErrors.length > 0
+                    ? criticalSafetyErrors
+                    : rubricItems.flatMap((r) => r.detail?.missingOrImprove || []).slice(0, 3)
+                  ).map((item, idx) => <li key={idx}>· {item}</li>)
+                ) : (
+                  <li className="text-[#1F4B3A]">· Sin omisiones mayores ni errores de seguridad relevantes.</li>
+                )}
+              </ul>
+            </div>
+
+            <div className="bg-white border border-[#E2EAE4] rounded-xl p-3 space-y-1.5">
+              <span className="font-bold text-rose-800 block">9. Riesgos y consecuencias clínicas</span>
+              <p className="text-[#55685F] leading-relaxed">
+                {criticalSafetyErrors.length > 0
+                  ? `Riesgo iatrogénico o de deterioro fisiopatológico directo: ${criticalSafetyErrors.join(' ')}`
+                  : safetyNonCompensation?.applied
+                    ? safetyNonCompensation.reason
+                    : rationalUseAudit?.redFlagsSafetyNote ||
+                      'Retrasar confirmación diagnóstica o ajustar inadecuadamente la dosis según peso/función orgánica incrementa la morbimortalidad evitable.'}
+              </p>
+            </div>
+
+            <div className="bg-[#E4F1E8]/55 border border-[#72A98A] rounded-xl p-3 space-y-1.5">
+              <span className="font-bold text-[#1F4B3A] block">10. Conducta que debió realizarse</span>
+              <p className="text-[#263A32] leading-relaxed">
+                Confirmar <strong className="text-[#1F4B3A]">{solution.correctDiagnosis}</strong>, solicitar estudios clave (
+                {(solution.recommendedWorkup || []).slice(0, 2).join(', ') || 'paraclínicos dirigidos'}), instaurar{' '}
+                {solution.optimalTreatment.pharmacological[0]
+                  ? `${solution.optimalTreatment.pharmacological[0].drug} (${solution.optimalTreatment.pharmacological[0].dose}, ${solution.optimalTreatment.pharmacological[0].route})`
+                  : 'soporte no farmacológico dirigido'}{' '}
+                y definir destino: <strong>{solution.optimalTreatment.hospitalizationDecision}</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* 6. Perlas Pedagógicas y Alertas de Seguridad */}
         <div className="bg-[#E4F1E8]/55 border border-[#72A98A] rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2 text-[#1F4B3A] font-bold text-xs uppercase tracking-wider">
@@ -1330,6 +1380,20 @@ export const ClinicalAuditTab: React.FC<ClinicalAuditTabProps> = ({
               </ul>
             </div>
           )}
+
+          {/* Clasificación explícita de certeza científica del caso */}
+          <div className="bg-[#F8FBF9] border border-[#E2EAE4] rounded-xl px-3 py-2 space-y-0.5">
+            <div className="font-semibold text-[#263A32]">
+              Nivel de certeza asignado al caso:{' '}
+              <span className="text-[#43866B]">
+                {CERTAINTY_TIER_META[caseData.clinicalMetadata?.certaintyTier || 'guia_clinica'].label}
+              </span>
+            </div>
+            <div className="text-[#55685F]">
+              {CERTAINTY_TIER_META[caseData.clinicalMetadata?.certaintyTier || 'guia_clinica'].description}{' '}
+              Se diferencia de evidencia emergente, opinión experta o áreas de incertidumbre científica.
+            </div>
+          </div>
 
           {/* Estado honesto de verificación de la base científica */}
           <div
