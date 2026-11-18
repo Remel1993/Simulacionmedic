@@ -1395,9 +1395,23 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
     }
   }
 
-  // ECG coherente con taquicardia / bradicardia
+  // ECG coherente con taquicardia / bradicardia / frecuencia cardíaca real y hallazgos ECG asociados
   if (stdStudy.id === 'hosp-ecg-12d') {
-    if (vitals.heartRate >= 105) {
+    const existingNeuroEcg = (cCase.studiesPool || []).find(
+      (s) =>
+        (/\becg\b|electrocardiograma/i.test(s.name) || /\becg:/i.test(s.result)) &&
+        /inversi[oó]n.*onda\s*t|ondas?\s*t\s*cerebrales/i.test(s.result)
+    );
+    if (existingNeuroEcg) {
+      return {
+        ...stdStudy,
+        result: `Ritmo sinusal con frecuencia cardíaca de ${vitals.heartRate} lpm. Inversión simétrica profunda de ondas T ("ondas T cerebrales") con prolongación discreta del QTc sin elevación convexa aguda del segmento ST.`,
+        interpretation:
+          'Alteraciones neurogénicas de repolarización en ECG ("ondas T cerebrales") concordantes con el cuadro neurológico y frecuencia cardíaca actual.',
+        isAbnormal: true,
+      };
+    }
+    if (vitals.heartRate >= 100) {
       return {
         ...stdStudy,
         result: `Taquicardia sinusal regular a ${vitals.heartRate} lpm. Eje QRS conservado. Segmento ST isoeléctrico sin supradesnivel agudo.`,
@@ -1405,7 +1419,15 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
         isAbnormal: true,
       };
     }
-    if (vitals.heartRate <= 55) {
+    if (vitals.heartRate === 0 || (vitals.bloodPressure || '').startsWith('0/')) {
+      return {
+        ...stdStudy,
+        result: 'TRAZO ISOELÉCTRICO CONTINUO (ASISTOLIA). Frecuencia cardíaca: 0 lpm.',
+        interpretation: 'ASISTOLIA: ausencia total de actividad eléctrica ventricular.',
+        isAbnormal: true,
+      };
+    }
+    if (vitals.heartRate <= 59) {
       return {
         ...stdStudy,
         result: `Bradicardia sinusal regular a ${vitals.heartRate} lpm. Vigilar trastornos de conducción o desequilibrio electrolítico asociado.`,
@@ -1413,6 +1435,10 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
         isAbnormal: true,
       };
     }
+    return {
+      ...stdStudy,
+      result: stdStudy.result.replace('76 lpm', `${vitals.heartRate} lpm`),
+    };
   }
 
   // EGO coherente con deshidratación, cetosis o infección urinaria/renal

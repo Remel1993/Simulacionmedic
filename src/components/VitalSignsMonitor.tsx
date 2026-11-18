@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { ClinicalEvolutionState, ComplementaryStudy, VitalSigns } from '../types/clinical';
+import { LeadName } from '../utils/ecgWaveform';
+import { EcgMonitorStrip } from './EcgMonitorStrip';
 import {
   computeDerivedBedsideIndices,
   evaluateVitalsWithAgeContext,
@@ -15,7 +17,6 @@ import {
   Zap,
   AlertTriangle,
   Skull,
-  RefreshCw,
 } from 'lucide-react';
 
 interface VitalSignsMonitorProps {
@@ -27,10 +28,13 @@ interface VitalSignsMonitorProps {
   isPregnant?: boolean;
   unlockedStudies?: ComplementaryStudy[];
   onOpenStat?: () => void;
-  onRefreshVitals?: () => void;
   showStatButton?: boolean;
   evolutionState?: ClinicalEvolutionState;
   isDeceased?: boolean;
+  showEcgMonitor?: boolean;
+  ecgStudy?: ComplementaryStudy;
+  selectedEcgLead?: LeadName;
+  onChangeEcgLead?: (lead: LeadName) => void;
 }
 
 export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
@@ -42,22 +46,17 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
   isPregnant = false,
   unlockedStudies = [],
   onOpenStat,
-  onRefreshVitals,
   showStatButton = false,
   evolutionState,
   isDeceased = false,
+  showEcgMonitor = false,
+  ecgStudy,
+  selectedEcgLead,
+  onChangeEcgLead,
 }) => {
   const deceased = Boolean(
     isDeceased || vitals.heartRate === 0 || (vitals.bloodPressure || '').startsWith('0/')
   );
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefreshClick = () => {
-    if (!onRefreshVitals || deceased) return;
-    setIsRefreshing(true);
-    onRefreshVitals();
-    window.setTimeout(() => setIsRefreshing(false), 380);
-  };
 
   const indices = computeDerivedBedsideIndices(vitals, patientAge, unlockedStudies);
   const mapText = indices.map !== null ? `${indices.map}` : '--';
@@ -150,23 +149,6 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {onRefreshVitals && !deceased && (
-            <button
-              type="button"
-              onClick={handleRefreshClick}
-              title="Actualizar / reevaluar signos vitales ahora"
-              aria-label="Actualizar signos vitales"
-              className="min-h-[34px] inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white hover:bg-[#F3F7F4] border border-[#CFE4D6] text-[11px] sm:text-xs font-semibold text-[#263A32] transition-colors cursor-pointer"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 text-[#43866B] shrink-0 ${
-                  isRefreshing ? 'animate-spin' : ''
-                }`}
-              />
-              <span>Actualizar</span>
-            </button>
-          )}
-
           {showStatButton && onOpenStat && (
             <button
               type="button"
@@ -363,6 +345,17 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Live Single-Lead ECG Monitor Strip (Urgencias Area) */}
+        {showEcgMonitor && ecgStudy && (
+          <EcgMonitorStrip
+            study={ecgStudy}
+            vitalSigns={vitals}
+            isDeceased={deceased}
+            lead={selectedEcgLead}
+            onLeadChange={onChangeEcgLead}
+          />
+        )}
 
         {/* Somatometry & Derived Bedside Indices Strip */}
         {(typeof vitals.weightKg === 'number' ||

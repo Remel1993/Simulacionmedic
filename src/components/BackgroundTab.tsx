@@ -181,7 +181,7 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
               <div className="font-mono tabular-nums text-[11px] text-[#263A32] bg-[#F8FBF9] border border-[#E2EAE4] px-2.5 py-1 rounded-md">
                 {isDeceased
                   ? 'FALLECIDO · ASISTOLIA · PA 0/0 mmHg · FC 0 lpm · Glasgow 3/15'
-                  : `PA ${liveVitals.bloodPressure} · FC ${liveVitals.heartRate} lpm · FR ${liveVitals.respiratoryRate} · SpO₂ ${liveVitals.oxygenSaturation}% · Gluc ${liveVitals.bloodGlucose} · Glasgow ${liveVitals.glasgow}/15`}
+                  : `PA ${liveVitals.bloodPressure} · FC ${liveVitals.heartRate} lpm · FR ${liveVitals.respiratoryRate} · SpO₂ ${liveVitals.oxygenSaturation}%${typeof liveVitals.bloodGlucose === 'number' ? ` · Gluc ${liveVitals.bloodGlucose}` : ''} · Glasgow ${liveVitals.glasgow}/15`}
               </div>
             )}
           </div>

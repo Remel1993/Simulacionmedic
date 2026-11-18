@@ -39,6 +39,7 @@ import { enrichCaseWithHospitalCatalog } from './utils/studiesCatalog';
 import { enrichCaseWithUniversalPhysicalExam } from './utils/physicalExamCatalog';
 import { deriveDisclosedBackground } from './utils/backgroundDisclosure';
 import { detectPregnancyContext } from './utils/clinicalContext';
+import { LeadName, findCaseEcgStudy } from './utils/ecgWaveform';
 import {
   clearActiveSimulationSession,
   clearAllHistoryRecords,
@@ -193,6 +194,13 @@ export default function App() {
     () => liveStudies.filter((s) => unlockedStudyIds.includes(s.id)),
     [liveStudies, unlockedStudyIds]
   );
+
+  const liveEcgStudy = useMemo(
+    () => findCaseEcgStudy(liveStudies, liveVitalSigns),
+    [liveStudies, liveVitalSigns]
+  );
+
+  const [selectedEcgLead, setSelectedEcgLead] = useState<LeadName>('DII');
 
   const isPublicPregnant = useMemo(
     () => detectPregnancyContext(currentCase, { publicOnly: true }).isViablePregnancy,
@@ -518,6 +526,7 @@ export default function App() {
     setLiveVitalSigns(enriched.vitalSigns);
     setStatInterventions([]);
     setStatDrawerOpen(false);
+    setSelectedEcgLead('DII');
     setUnlockedExamIds([]);
     setUnlockedStudyIds([]);
     setEmergencyChartUnlocked(false);
@@ -762,35 +771,6 @@ export default function App() {
         appliedAt: nowTs,
       });
     }
-  };
-
-  const handleRefreshVitals = () => {
-    if (isPatientDeceased || evaluationResult) return;
-    const step = evaluateClinicalEvolutionStep({
-      caseData: currentCase,
-      baselineVitals: currentCase.vitalSigns,
-      currentVitals: clinicalAnchorVitalsRef.current,
-      elapsedSeconds,
-      statInterventions,
-      unlockedExamCount: unlockedExamIds.length,
-      unlockedStudyCount: unlockedStudyIds.length,
-      lastEvaluatedSecond: lastEvolutionCheckRef.current,
-      forceRefresh: true,
-    });
-    lastEvolutionCheckRef.current = step.evolutionState.lastEvaluatedSecond;
-    setEvolutionState(step.evolutionState);
-    if (step.changed) {
-      clinicalAnchorVitalsRef.current = step.updatedVitals;
-    }
-    setLiveVitalSigns(
-      sampleLiveMonitorTelemetry({
-        anchorVitals: clinicalAnchorVitalsRef.current,
-        elapsedSeconds: elapsedSeconds + 3,
-        caseId: currentCase.id,
-        trajectory: step.evolutionState.trajectory,
-        isDeceased: false,
-      })
-    );
   };
 
   // Unlock physical exam finding
@@ -1092,11 +1072,38 @@ export default function App() {
       },
     };
     const enrichedFound = enrichCaseWithUniversalPhysicalExam(enrichCaseWithHospitalCatalog(found));
+    const summary = record.evaluation.userSummary;
+    const finalVitals = summary?.finalVitalSigns || enrichedFound.vitalSigns;
+
+    const unlockedExamSet = new Set(summary?.unlockedExamsNames || []);
+    const matchedExamIds = enrichedFound.physicalExamPool
+      .filter((pe) => unlockedExamSet.has(pe.name))
+      .map((pe) => pe.id);
+
+    const unlockedStudySet = new Set(summary?.unlockedStudiesNames || []);
+    const matchedStudyIds = enrichedFound.studiesPool
+      .filter((st) => unlockedStudySet.has(st.name))
+      .map((st) => st.id);
+
     setCurrentCase(enrichedFound);
-    setLiveVitalSigns(enrichedFound.vitalSigns);
+    clinicalAnchorVitalsRef.current = finalVitals;
+    setLiveVitalSigns(finalVitals);
     setStatInterventions([]);
     setStatDrawerOpen(false);
     setEvolutionState(undefined);
+    setUnlockedExamIds(matchedExamIds);
+    setUnlockedStudyIds(matchedStudyIds);
+    setEmergencyChartUnlocked(false);
+    setPrimaryDiagnosis(summary?.primaryDiagnosis || record.userDiagnosis || '');
+    setDifferentialDiagnoses(summary?.differentialDiagnoses || []);
+    setClinicalJustification(summary?.clinicalJustification || '');
+    setMedications(summary?.pharmacologicalPlan || []);
+    setPendingMedDraft(undefined);
+    setGeneralMeasures(summary?.generalMeasures || '');
+    setHospitalizationDecision(summary?.hospitalizationDecision || '');
+    setReferralCriteria(summary?.referralCriteria || '');
+    setFollowUpPlan(summary?.followUpPlan || '');
+    setMessages([]);
     setEvaluationResult(record.evaluation);
     setPendingOutcome(null);
     setImmediateDeathAlert(null);
@@ -1282,6 +1289,7 @@ export default function App() {
                   handleUpdatePreferences({ preferredMode: mode, preferredSpecialty: specialty })
                 }
                 completedCaseIds={completedCaseIds}
+                customCaseIds={customCases.map((c) => c.id)}
                 history={history}
                 onStartNextUnseen={handleStartNextUnseen}
                 onRetryCase={handleRetryCaseById}
@@ -1344,13 +1352,16 @@ export default function App() {
                     statCount={statInterventions.length}
                     triageLevel={currentCase.patientInfo.triageLevel}
                     onOpenStat={() => setStatDrawerOpen(true)}
-                    onRefreshVitals={!evaluationResult ? handleRefreshVitals : undefined}
                     showStatButton={!evaluationResult}
                     evolutionState={evolutionState}
                     isDeceased={isPatientDeceased}
                     patientAge={currentCase.patientInfo.age}
                     isPregnant={isPublicPregnant}
                     unlockedStudies={unlockedStudyObjects}
+                    showEcgMonitor={isUrgenciasMode}
+                    ecgStudy={liveEcgStudy}
+                    selectedEcgLead={selectedEcgLead}
+                    onChangeEcgLead={setSelectedEcgLead}
                   />
                 </div>
 
@@ -1834,6 +1845,8 @@ export default function App() {
         onSendMessage={handleSendMessage}
         isChatLoading={isChatLoading}
         isDeceased={isPatientDeceased}
+        initialTtsEnabled={userPreferences.ttsEnabled}
+        onToggleTts={(enabled) => handleUpdatePreferences({ ttsEnabled: enabled })}
       />
 
       <NewCaseModal

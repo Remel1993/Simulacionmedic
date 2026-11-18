@@ -46,6 +46,8 @@ interface StatStabilizationDrawerProps {
   onSendMessage: (text: string) => Promise<void>;
   isChatLoading: boolean;
   isDeceased?: boolean;
+  initialTtsEnabled?: boolean;
+  onToggleTts?: (enabled: boolean) => void;
 }
 
 type CategoryFilter = 'Todos' | StatPreset['category'];
@@ -83,6 +85,8 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
   onSendMessage,
   isChatLoading,
   isDeceased = false,
+  initialTtsEnabled = false,
+  onToggleTts,
 }) => {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('Todos');
   const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>(undefined);
@@ -90,7 +94,11 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
   const [dose, setDose] = useState('');
   const [route, setRoute] = useState('Intravenosa (IV)');
   const [chatInput, setChatInput] = useState('');
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(initialTtsEnabled);
+
+  useEffect(() => {
+    setTtsEnabled(initialTtsEnabled);
+  }, [initialTtsEnabled]);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const doseInputRef = useRef<HTMLInputElement>(null);
@@ -596,7 +604,11 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
 
               <button
                 type="button"
-                onClick={() => setTtsEnabled((prev) => !prev)}
+                onClick={() => {
+                  const next = !ttsEnabled;
+                  setTtsEnabled(next);
+                  onToggleTts?.(next);
+                }}
                 className={`min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors shrink-0 cursor-pointer ${
                   ttsEnabled
                     ? 'bg-[#43866B] border-[#43866B] text-white'

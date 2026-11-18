@@ -328,7 +328,7 @@ export const OUTPATIENT_CARDIO_BLOCKS_CASES: ClinicalCase[] = [
       evolutionTime: '5 días de evolución',
       currentIllness:
         'Paciente masculino de 71 años que acude caminando acompañado de su esposa a consulta externa tras presentar ayer y hace cuatro días dos episodios súbitos de oscurecimiento visual y sensación inminente de desmayo de unos 5 segundos de duración mientras caminaba en su taller, obligándolo a sujetarse de una mesa para no caer. Niega dolor opresivo en el pecho, palpitaciones rápidas, pérdida del control de esfínteres o movimientos anormales.',
-      triageLevel: 'Nivel III (Urgente)',
+      triageLevel: 'Nivel III (Urgencia)',
     },
     vitalSigns: {
       bloodPressure: '114/68 mmHg',
@@ -479,7 +479,7 @@ export const OUTPATIENT_CARDIO_BLOCKS_CASES: ClinicalCase[] = [
       evolutionTime: 'Asintomático',
       currentIllness:
         'Paciente masculino de 49 años que acude a consulta externa para valoración preoperatoria solicitada por cirugía general previo a hernioplastia umbilical electiva. Se encuentra completamente asintomático: camina 40 minutos todos los días sin disnea ni opresión torácica, niega palpitaciones, mareos o síncopes. Trae estudios básicos preoperatorios solicitados hace 2 días.',
-      triageLevel: 'Nivel V (No urgente)',
+      triageLevel: 'Nivel V (No Urgente)',
     },
     vitalSigns: {
       bloodPressure: '120/78 mmHg',

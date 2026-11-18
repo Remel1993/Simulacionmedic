@@ -1,21 +1,26 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useId } from 'react';
 import { ComplementaryStudy, VitalSigns } from '../types/clinical';
+import {
+  TracingKind,
+  LeadName,
+  LEAD_GRID,
+  EcgProfile,
+  detectTracingKind,
+  parseEcgProfile,
+  buildLeadPolylinePoints,
+  stripMedicalNegations,
+  gaussian,
+  sampleEcgLeadMv,
+} from '../utils/ecgWaveform';
 import { Activity, Maximize2, Minimize2, Sun, Moon, Ruler } from 'lucide-react';
+
+export { detectTracingKind, parseEcgProfile };
 
 interface StudyTracingViewerProps {
   study: ComplementaryStudy;
   vitalSigns?: VitalSigns;
   dark?: boolean;
 }
-
-type TracingKind =
-  | 'ecg_12'
-  | 'holter_ecg'
-  | 'holter_bp'
-  | 'spirometry'
-  | 'eeg'
-  | 'audiometry'
-  | null;
 
 function norm(text: string): string {
   return (text || '')
@@ -24,616 +29,57 @@ function norm(text: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function stripMedicalNegations(txt: string): string {
-  return txt
-    .replace(
-      /\bsin\s+(?:evidencia\s+de\s+|datos\s+de\s+|signos\s+de\s+|ondas?\s+t\s+)?(?:fibrilacion(?:\s+auricular)?|arritmias?(?:\s+supraventricular(?:es)?)?|isquemia(?:\s+aguda)?|supradesnivel(?:\s+agudo)?(?:\s+del\s+st)?|descenso(?:\s+del\s+st)?|elevacion(?:\s+ni\s+descenso)?(?:\s+del\s+st)?|inversion(?:\s+isquemica)?|picudas|hiperkalemia|onda\s+u|ondas\s+q|cambios\s+reciprocos|alternancia|bloqueo(?:\s+de\s+rama)?|hipertrofia(?:\s+ventricular)?|descargas\s+epileptiformes|pausas|asimetrias?)[^.,;)]*/g,
-      ' '
-    )
-    .replace(
-      /\bausencia\s+(?:total\s+)?de\s+(?:supradesnivel|elevacion|ondas?\s+t\s+picudas|actividad\s+epileptiforme|ondas?\s+p\s+sinusales|hipoacusia)[^.,;)]*/g,
-      ' '
-    )
-    .replace(/\bdescarta\s+(?:arritmia|isquemia|fibrilacion|actividad\s+epileptiforme)[^.,;)]*/g, ' ')
-    .replace(/\bno\s+se\s+registran\s+[^.,;)]*/g, ' ');
-}
-
-export function detectTracingKind(study: ComplementaryStudy): TracingKind {
-  const n = norm(study.name);
-
-  const isBpHolter =
-    /\bmapa\b/.test(n) ||
-    n.includes('monitoreo ambulatorio de pa') ||
-    n.includes('monitoreo ambulatorio de presion') ||
-    (n.includes('holter') && (n.includes('presion') || n.includes('arterial')));
-  if (isBpHolter) return 'holter_bp';
-  if (n.includes('holter')) return 'holter_ecg';
-  if (n.includes('electrocardiograma') || /\becg\b/.test(n) || /\bekg\b/.test(n)) return 'ecg_12';
-  if (n.includes('espirometr')) return 'spirometry';
-  if (n.includes('electroencefalograma') || /\beeg\b/.test(n)) return 'eeg';
-  if (n.includes('audiometr')) return 'audiometry';
-  return null;
-}
-
-// ---------- ECG WAVEFORM SYNTHESIS ----------
-
-interface EcgProfile {
-  hr: number;
-  isAsystole: boolean;
-  isAFib: boolean;
-  isParoxysmalMix: boolean;
-  isSVT: boolean;
-  isVT: boolean;
-  isCompleteAVBlock: boolean;
-  isFirstDegAVBlock: boolean;
-  isMobitz1: boolean;
-  isMobitz2: boolean;
-  isRBBB: boolean;
-  isLBBB: boolean;
-  isLAFB: boolean;
-  isAnteriorSTEMI: boolean;
-  isExtensiveAnterior: boolean;
-  isInferiorSTEMI: boolean;
-  isLateralSTEMI: boolean;
-  stElevationMv: number;
-  isStDepression: boolean;
-  isPericarditis: boolean;
-  isPeakedT: boolean;
-  isS1Q3T3: boolean;
-  isInvertedT: boolean;
-  invertedTLeads: 'anterior' | 'lateral' | 'inferior' | 'diffuse' | null;
-  isLVH: boolean;
-  isAlternans: boolean;
-  isLongQT: boolean;
-  isFlatT: boolean;
-}
-
-export function parseEcgProfile(study: ComplementaryStudy, vitalSigns?: VitalSigns): EcgProfile {
-  const txt = norm(`${study.result} ${study.interpretation || ''}`);
-  // Preserve "ausencia de ondas p" BEFORE stripping generic negations
-  const hasAbsentP = /ausencia(?:\s+total)?\s+de\s+ondas?\s+p|sustituidas\s+por\s+ondas?\s+f/.test(txt);
-  const txtNoNeg = stripMedicalNegations(txt);
-
-  const hrMatch =
-    txt.match(/(?:fc(?:\s+media)?|frecuencia(?:\s+cardiaca|\s+ventricular\s+media)?)\s*(?:de|:)?\s*(\d{1,3})\s*(?:lpm|bpm)?/) ||
-    txt.match(/\b(\d{1,3})\s*(?:lpm|bpm|latidos)\b/);
-
-  const isAsystole =
-    /\b(asistolia|trazo isoelectrico|paro cardiorrespiratorio|paro cardiaco)\b/.test(txt) ||
-    vitalSigns?.heartRate === 0 ||
-    (vitalSigns?.bloodPressure || '').startsWith('0/') ||
-    hrMatch?.[1] === '0';
-
-  if (isAsystole) {
-    return {
-      hr: 0,
-      isAsystole: true,
-      isAFib: false,
-      isParoxysmalMix: false,
-      isSVT: false,
-      isVT: false,
-      isCompleteAVBlock: false,
-      isFirstDegAVBlock: false,
-      isMobitz1: false,
-      isMobitz2: false,
-      isRBBB: false,
-      isLBBB: false,
-      isLAFB: false,
-      isAnteriorSTEMI: false,
-      isExtensiveAnterior: false,
-      isInferiorSTEMI: false,
-      isLateralSTEMI: false,
-      stElevationMv: 0,
-      isStDepression: false,
-      isPericarditis: false,
-      isPeakedT: false,
-      isS1Q3T3: false,
-      isInvertedT: false,
-      invertedTLeads: null,
-      isLVH: false,
-      isAlternans: false,
-      isLongQT: false,
-      isFlatT: false,
-    };
-  }
-
-  const parsedHr = hrMatch
-    ? Number(hrMatch[1])
-    : typeof vitalSigns?.heartRate === 'number'
-      ? vitalSigns.heartRate
-      : 76;
-  const hr = Math.max(24, Math.min(210, parsedHr));
-
-  const stMmMatch = txtNoNeg.match(/(?:elevacion|supradesnivel)[^.,;]{0,35}?(\d(?:\.\d)?)\s*mm/);
-  const stElevationMv = stMmMatch ? Math.min(0.65, Math.max(0.25, Number(stMmMatch[1]) * 0.1)) : 0.42;
-
-  const isParoxysmalMix = /taquicardia\s+sinusal.*fibrilacion\s+auricular\s+paroxistica/.test(txtNoNeg);
-  const isAFib =
-    hasAbsentP ||
-    isParoxysmalMix ||
-    /fibrilatori|r-r\s+completamente\s+irregulares|irregularmente\s+irregulares|fibrilacion\s+auricular/.test(txtNoNeg);
-
-  const isVT =
-    !isAFib &&
-    (/taquicardia\s+ventricular|monomorfica\s+sostenida/.test(txtNoNeg) ||
-      (/complejos?\s+qrs\s+anchos?/.test(txtNoNeg) && hr >= 120));
-  const isSVT = !isAFib && !isVT && /taquicardia\s+supraventricular|\btpsv\b|\btsvp\b|reentrada\s+nodal|flutter\s+auricular/.test(txtNoNeg);
-  const isCompleteAVBlock = !isVT && /bloqueo\s+av\s+(?:completo|de\s+tercer\s+grado)|disociacion\s+av/.test(txtNoNeg);
-  const isMobitz1 = !isCompleteAVBlock && /mobitz\s*(?:i|1)\b|wenckebach|alargamiento\s+progresivo\s+del\s+(?:intervalo\s+)?pr/.test(txtNoNeg);
-  const isMobitz2 = !isCompleteAVBlock && !isMobitz1 && /mobitz\s*(?:ii|2)\b|ondas?\s+p\s+bloqueadas?\s+(?:intermitentes|sin\s+alargamiento)/.test(txtNoNeg);
-  const isFirstDegAVBlock =
-    !isCompleteAVBlock &&
-    !isMobitz1 &&
-    !isMobitz2 &&
-    /bloqueo\s+(?:av|auriculoventricular)\s+(?:de\s+)?(?:primer|1\.?\s*er)\s+grado|pr\s+prolongado/.test(txtNoNeg);
-  const isRBBB = !isVT && /bloqueo\s+(?:completo\s+)?de\s+rama\s+derecha|\bbrdhh\b|patron\s+rsr|orejas\s+de\s+conejo/.test(txtNoNeg);
-  const isLBBB = !isVT && !isRBBB && /bloqueo\s+(?:completo\s+)?de\s+rama\s+izquierda|\bbrihh\b|r\s+ancha\s+y\s+mellada/.test(txtNoNeg);
-  const isLAFB = !isVT && /hemibloqueo\s+(?:fascicular\s+)?anterior\s+izquierdo|bloqueo\s+bifascicular|eje[^.,;]*-60/.test(txtNoNeg);
-
-  const isPericarditis =
-    /silla de montar|concava[^.,;]*st|descenso del segmento pr|elevacion difusa/.test(txtNoNeg);
-
-  const isAnteriorSTEMI =
-    !isPericarditis &&
-    (/(?:elevacion|supradesnivel)[^.,;]*st[^.,;]*(?:v1|v2|v3|v4|cara anterior|anteroseptal|extens|apical|precordial)/.test(txtNoNeg) ||
-      /(?:v1|v2|v3|v4|cara anterior|precordiales)[^.,;]*(?:elevacion|supradesnivel)/.test(txtNoNeg) ||
-      /iamcest\s+anterior|takotsubo/.test(txtNoNeg));
-
-  const isExtensiveAnterior = isAnteriorSTEMI && /(?:v5|v6|extens)/.test(txtNoNeg);
-
-  const isInferiorSTEMI =
-    !isPericarditis &&
-    (/(?:elevacion|supradesnivel)[^.,;]*st[^.,;]*(?:dii\b|diii\b|avf|cara inferior|inferiores)/.test(txtNoNeg) ||
-      /(?:dii\b|diii\b|avf|cara inferior)[^.,;]*(?:elevacion|supradesnivel)/.test(txtNoNeg) ||
-      /iamcest\s+inferior/.test(txtNoNeg));
-
-  const isLateralSTEMI =
-    !isPericarditis &&
-    !isAnteriorSTEMI &&
-    (/(?:elevacion|supradesnivel)[^.,;]*st[^.,;]*(?:v5|v6|\bdi\b|avl|cara lateral)/.test(txtNoNeg) ||
-      /iamcest\s+lateral/.test(txtNoNeg));
-
-  const isAnySTEMI = isAnteriorSTEMI || isInferiorSTEMI || isLateralSTEMI;
-
-  // Subendocardial ischemia / NSTEMI ST depression (ignore mirror changes of STEMI)
-  const isStDepression =
-    !isAnySTEMI &&
-    !isPericarditis &&
-    /(?:descenso|infradesnivel|depresion)[^.,;]*st|lesion\s+subendocardica|iamsest|scasest/.test(txtNoNeg);
-
-  const isPeakedT =
-    /ondas?\s*t\s*(?:altas|picudas)|t\s+picudas|hiperkalemia/.test(txtNoNeg);
-
-  const isS1Q3T3 = /s1q3t3|onda s profunda en di|onda q y t negativa en diii/.test(txtNoNeg);
-
-  const hasInvertedTMention =
-    /inversion\s+de\s+(?:la\s+)?onda\s+t|ondas?\s+t\s+(?:invertidas?|negativas?)|isquemia\s+subepicardica/.test(txtNoNeg);
-
-  let invertedTLeads: EcgProfile['invertedTLeads'] = null;
-  if (hasInvertedTMention && !isS1Q3T3) {
-    if (/v1|v2|v3|anterior/.test(txtNoNeg)) invertedTLeads = 'anterior';
-    else if (/v4|v5|v6|lateral|avl/.test(txtNoNeg)) invertedTLeads = 'lateral';
-    else if (/dii|diii|avf|inferior/.test(txtNoNeg)) invertedTLeads = 'inferior';
-    else invertedTLeads = 'diffuse';
-  }
-
-  const isLVH = /hipertrofia\s+ventricular\s+izquierda|sokolow|sobrecarga\s+sistolica|hipertrofia.*sobrecarga/.test(
-    txtNoNeg
-  );
-
-  const qtcValMatch = txtNoNeg.match(/qtc\s*(?:de|:)?\s*(\d{3})\s*ms/);
-  const qtcMs = qtcValMatch ? parseInt(qtcValMatch[1], 10) : 0;
-
-  return {
-    hr,
-    isAsystole: false,
-    isAFib,
-    isParoxysmalMix,
-    isSVT,
-    isVT,
-    isCompleteAVBlock,
-    isFirstDegAVBlock,
-    isMobitz1,
-    isMobitz2,
-    isRBBB,
-    isLBBB,
-    isLAFB,
-    isAnteriorSTEMI,
-    isExtensiveAnterior,
-    isInferiorSTEMI,
-    isLateralSTEMI,
-    stElevationMv,
-    isStDepression,
-    isPericarditis,
-    isPeakedT,
-    isS1Q3T3,
-    isInvertedT: hasInvertedTMention && !isS1Q3T3,
-    invertedTLeads,
-    isLVH,
-    isAlternans: /bajo voltaje|alternancia electrica/.test(txtNoNeg),
-    isLongQT: /qtc[^.,;]*(?:prolongado|largo)/.test(txtNoNeg) || qtcMs >= 465,
-    isFlatT: /onda\s*t[^.,;]*aplanada/.test(txtNoNeg) && !hasInvertedTMention,
-  };
-}
-
-type LeadName = 'DI' | 'DII' | 'DIII' | 'aVR' | 'aVL' | 'aVF' | 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6';
-
-const LEAD_GRID: LeadName[][] = [
-  ['DI', 'aVR', 'V1', 'V4'],
-  ['DII', 'aVL', 'V2', 'V5'],
-  ['DIII', 'aVF', 'V3', 'V6'],
-];
-
-function gaussian(x: number, mu: number, sigma: number): number {
-  const z = (x - mu) / sigma;
-  return Math.exp(-0.5 * z * z);
-}
-
-function sampleEcgLeadMv(
-  phaseSec: number,
-  beatIndex: number,
-  lead: LeadName,
-  p: EcgProfile,
-  omitPWave = false
-): number {
-  const leadScale: Record<LeadName, { pAmp: number; qAmp: number; rAmp: number; sAmp: number; tAmp: number }> = {
-    DI: { pAmp: 0.11, qAmp: -0.05, rAmp: 0.72, sAmp: -0.1, tAmp: 0.22 },
-    DII: { pAmp: 0.16, qAmp: -0.06, rAmp: 0.98, sAmp: -0.12, tAmp: 0.28 },
-    DIII: { pAmp: 0.08, qAmp: -0.04, rAmp: 0.42, sAmp: -0.14, tAmp: 0.12 },
-    aVR: { pAmp: -0.13, qAmp: -0.58, rAmp: 0.12, sAmp: -0.25, tAmp: -0.24 },
-    aVL: { pAmp: 0.06, qAmp: -0.05, rAmp: 0.45, sAmp: -0.1, tAmp: 0.14 },
-    aVF: { pAmp: 0.12, qAmp: -0.05, rAmp: 0.68, sAmp: -0.12, tAmp: 0.22 },
-    V1: { pAmp: 0.06, qAmp: 0, rAmp: 0.22, sAmp: -0.82, tAmp: -0.12 },
-    V2: { pAmp: 0.08, qAmp: 0, rAmp: 0.45, sAmp: -0.78, tAmp: 0.26 },
-    V3: { pAmp: 0.09, qAmp: -0.02, rAmp: 0.85, sAmp: -0.45, tAmp: 0.34 },
-    V4: { pAmp: 0.1, qAmp: -0.05, rAmp: 1.15, sAmp: -0.22, tAmp: 0.35 },
-    V5: { pAmp: 0.1, qAmp: -0.06, rAmp: 1.02, sAmp: -0.12, tAmp: 0.28 },
-    V6: { pAmp: 0.09, qAmp: -0.05, rAmp: 0.82, sAmp: -0.08, tAmp: 0.24 },
-  };
-
-  const base = { ...leadScale[lead] };
-  let stShift = 0;
-  let prShift = 0;
-  const tCenterBase = p.isLongQT ? 0.38 : 0.31;
-  const tSigma = p.isPeakedT ? 0.022 : 0.046;
-  const qrsWidth = p.isVT
-    ? 1.85
-    : p.isLBBB
-      ? 1.56
-      : p.isRBBB
-        ? 1.48
-        : p.isPeakedT || p.isCompleteAVBlock || p.isMobitz2
-          ? 1.25
-          : 1.0;
-  const prOffset = p.isPeakedT ? -0.032 : 0;
-
-  if (p.isAlternans) {
-    const mult = beatIndex % 2 === 0 ? 0.42 : 0.21;
-    base.rAmp *= mult;
-    base.sAmp *= mult;
-    base.qAmp *= mult;
-  }
-
-  // LVH Voltage + Strain
-  if (p.isLVH) {
-    if (lead === 'V1' || lead === 'V2') {
-      base.sAmp = -1.65;
-      base.rAmp = 0.15;
-    } else if (lead === 'V5' || lead === 'V6') {
-      base.rAmp = 2.05;
-      stShift = -0.14;
-      base.tAmp = -0.28;
-    } else if (lead === 'DI' || lead === 'aVL') {
-      base.rAmp = 1.25;
-      stShift = -0.1;
-      base.tAmp = -0.2;
-    }
-  }
-
-  // Anterior / Extensive STEMI (convex Pardee wave + mirror depression in II/III/aVF)
-  if (p.isAnteriorSTEMI) {
-    const antLeads: LeadName[] = p.isExtensiveAnterior
-      ? ['V1', 'V2', 'V3', 'V4', 'V5', 'V6']
-      : ['V1', 'V2', 'V3', 'V4'];
-    if (antLeads.includes(lead)) {
-      stShift = lead === 'V2' || lead === 'V3' ? p.stElevationMv : p.stElevationMv * 0.72;
-      base.sAmp = 0;
-      base.qAmp = lead === 'V1' || lead === 'V2' ? -0.18 : base.qAmp;
-      base.tAmp = Math.max(base.tAmp, 0.48);
-    } else if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') {
-      stShift = -0.17;
-    }
-  }
-
-  // Inferior STEMI (DII, DIII, aVF + mirror depression in DI, aVL)
-  if (p.isInferiorSTEMI) {
-    if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') {
-      stShift = p.stElevationMv * 0.85;
-      base.sAmp = 0;
-      base.tAmp = 0.42;
-    } else if (lead === 'DI' || lead === 'aVL') {
-      stShift = -0.17;
-    }
-  }
-
-  // Lateral STEMI
-  if (p.isLateralSTEMI) {
-    if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') {
-      stShift = p.stElevationMv * 0.8;
-      base.sAmp = 0;
-      base.tAmp = 0.4;
-    } else if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') {
-      stShift = -0.15;
-    }
-  }
-
-  // Subendocardial ischemia / NSTEMI ST depression
-  if (p.isStDepression && (lead === 'V3' || lead === 'V4' || lead === 'V5' || lead === 'V6' || lead === 'DI' || lead === 'aVL')) {
-    stShift = -0.22;
-    base.tAmp = -0.18;
-  }
-
-  // Pericarditis (diffuse concave ST elevation + PR depression, opposite in aVR)
-  if (p.isPericarditis) {
-    if (lead !== 'aVR' && lead !== 'V1') {
-      stShift = 0.24;
-      prShift = -0.075;
-    } else if (lead === 'aVR') {
-      prShift = 0.075;
-      stShift = -0.14;
-    }
-  }
-
-  // Hyperkalemia Peaked T waves
-  if (p.isPeakedT && (lead === 'V2' || lead === 'V3' || lead === 'V4' || lead === 'V5')) {
-    base.tAmp = 0.92;
-  }
-
-  // Pulmonary Embolism S1Q3T3 + anterior precordial T inversion
-  if (p.isS1Q3T3) {
-    if (lead === 'DI') base.sAmp = -0.52;
-    if (lead === 'DIII') {
-      base.qAmp = -0.34;
-      base.tAmp = -0.28;
-    }
-    if (lead === 'V1' || lead === 'V2' || lead === 'V3') {
-      base.tAmp = -0.34;
-    }
-  }
-
-  // Explicit T-wave inversion (never flattened!)
-  if (p.isInvertedT && lead !== 'aVR') {
-    const matchTarget =
-      p.invertedTLeads === 'diffuse' ||
-      (p.invertedTLeads === 'anterior' && (lead === 'V1' || lead === 'V2' || lead === 'V3')) ||
-      (p.invertedTLeads === 'lateral' && (lead === 'V4' || lead === 'V5' || lead === 'V6' || lead === 'DI' || lead === 'aVL')) ||
-      (p.invertedTLeads === 'inferior' && (lead === 'DII' || lead === 'DIII' || lead === 'aVF'));
-    if (matchTarget) {
-      base.tAmp = -0.34;
-    }
-  }
-
-  if (p.isFlatT && lead !== 'aVR') {
-    base.tAmp *= 0.24;
-  }
-
-  // Bundle Branch & Fascicular Blocks
-  if (p.isLAFB) {
-    if (lead === 'DI' || lead === 'aVL') {
-      base.qAmp = -0.14;
-      base.rAmp = 1.15;
-    } else if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') {
-      base.rAmp = 0.22;
-      base.sAmp = -0.9;
-    }
-  }
-
-  let rPrimeAmp = 0;
-  if (p.isRBBB) {
-    if (lead === 'V1' || lead === 'V2') {
-      base.qAmp = 0;
-      base.rAmp = 0.28;
-      base.sAmp = -0.26;
-      rPrimeAmp = 0.78;
-      base.tAmp = -0.24;
-    } else if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') {
-      base.sAmp = -0.48;
-    }
-  }
-
-  if (p.isLBBB) {
-    if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') {
-      base.qAmp = 0;
-      base.rAmp = 0.96;
-      base.sAmp = 0;
-      rPrimeAmp = 0.74;
-      stShift = -0.12;
-      base.tAmp = -0.28;
-    } else if (lead === 'V1' || lead === 'V2' || lead === 'V3') {
-      base.qAmp = 0;
-      base.rAmp = 0.08;
-      base.sAmp = -1.25;
-      base.tAmp = 0.26;
-    }
-  }
-
-  const mobitzCycle = beatIndex % 4;
-  const droppedQrs = (p.isMobitz1 || p.isMobitz2) && mobitzCycle === 3;
-  const avConductionDelay = p.isFirstDegAVBlock
-    ? 0.085
-    : p.isMobitz1
-      ? mobitzCycle === 1
-        ? 0.045
-        : mobitzCycle === 2
-          ? 0.095
-          : 0
-      : 0;
-
-  const pCenter = (p.isFirstDegAVBlock ? 0.055 : 0.07) + prOffset;
-  const rCenter = 0.18 + avConductionDelay;
-  const tCenter = tCenterBase + avConductionDelay;
-
-  let v = 0;
-
-  // P wave, f-waves, SVT, or Complete AV Block
-  if (p.isAFib) {
-    v +=
-      0.038 * Math.sin(2 * Math.PI * 6.5 * (phaseSec + beatIndex * 0.17)) +
-      0.026 * Math.cos(2 * Math.PI * 9.2 * (phaseSec + beatIndex * 0.31));
-  } else if (!omitPWave && !p.isSVT && !p.isVT) {
-    v += base.pAmp * gaussian(phaseSec, pCenter, 0.019);
-    if (prShift !== 0 && phaseSec > pCenter + 0.015 && phaseSec < rCenter - 0.025) {
-      v += prShift;
-    }
-  }
-  if (droppedQrs) {
-    return v;
-  }
-  if (p.isVT) {
-    base.tAmp = -0.36;
-  }
-
-  // QRS complex (including rsR' for RBBB or broad notched R for LBBB)
-  v += base.qAmp * gaussian(phaseSec, rCenter - 0.022 * qrsWidth, 0.008 * qrsWidth);
-  v += base.rAmp * gaussian(phaseSec, rCenter - (rPrimeAmp > 0 ? 0.014 : 0), 0.011 * qrsWidth);
-  v += base.sAmp * gaussian(phaseSec, rCenter + (p.isRBBB && (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') ? 0.03 : 0.022 * qrsWidth), (p.isRBBB ? 0.014 : 0.009) * qrsWidth);
-  if (rPrimeAmp > 0) {
-    v += rPrimeAmp * gaussian(phaseSec, rCenter + 0.022, 0.013 * qrsWidth);
-  }
-
-  // ST segment shift (convex dome for STEMI, concave for pericarditis, horizontal/downsloping for depression)
-  if (stShift !== 0) {
-    const jStart = rCenter + 0.024 * qrsWidth;
-    const tEnd = tCenter + 0.032;
-    if (phaseSec >= jStart && phaseSec <= tEnd) {
-      const progress = (phaseSec - jStart) / (tEnd - jStart);
-      let envelope: number;
-      if (p.isPericarditis) {
-        // Concave upward: stays lower right after J-point, curves smoothly up into T
-        envelope = 0.48 + 0.52 * Math.pow(Math.sin(Math.PI * progress * 0.78), 1.6);
-      } else if (stShift > 0) {
-        // Convex Pardee dome: high plateau directly from J-point
-        envelope = 0.85 + 0.15 * Math.sin(Math.PI * progress);
-      } else {
-        // Horizontal/downsloping depression
-        envelope = 0.82 * Math.sin(Math.PI * (0.15 + 0.7 * progress));
-      }
-      v += stShift * envelope;
-    }
-  }
-
-  // T wave
-  v += base.tAmp * gaussian(phaseSec, tCenter, tSigma);
-
-  return v;
-}
-
-function getStShiftForLead(lead: LeadName, p: EcgProfile): number {
-  if (p.isAnteriorSTEMI) {
-    const antLeads: LeadName[] = p.isExtensiveAnterior ? ['V1', 'V2', 'V3', 'V4', 'V5', 'V6'] : ['V1', 'V2', 'V3', 'V4'];
-    if (antLeads.includes(lead)) return lead === 'V2' || lead === 'V3' ? p.stElevationMv : p.stElevationMv * 0.72;
-    if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') return -0.17;
-  }
-  if (p.isInferiorSTEMI) {
-    if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') return p.stElevationMv * 0.85;
-    if (lead === 'DI' || lead === 'aVL') return -0.17;
-  }
-  if (p.isLateralSTEMI) {
-    if (lead === 'DI' || lead === 'aVL' || lead === 'V5' || lead === 'V6') return p.stElevationMv * 0.8;
-    if (lead === 'DII' || lead === 'DIII' || lead === 'aVF') return -0.15;
-  }
-  if (p.isStDepression && (lead === 'V3' || lead === 'V4' || lead === 'V5' || lead === 'V6' || lead === 'DI' || lead === 'aVL')) {
-    return -0.22;
-  }
-  if (p.isPericarditis) {
-    if (lead !== 'aVR' && lead !== 'V1') return 0.24;
-    if (lead === 'aVR') return -0.14;
-  }
-  if (p.isLVH && (lead === 'V5' || lead === 'V6')) return -0.14;
-  return 0;
-}
-
-function buildLeadPolylinePoints(
-  lead: LeadName,
-  profile: EcgProfile,
-  durationSec: number,
-  x0: number,
-  yBaseline: number,
-  pxPerSec: number,
-  pxPerMv: number
-): string {
-  if (profile.isAsystole || profile.hr <= 0) {
-    const xEnd = x0 + durationSec * pxPerSec;
-    return `${x0.toFixed(1)},${yBaseline.toFixed(1)} ${xEnd.toFixed(1)},${yBaseline.toFixed(1)}`;
-  }
-
-  const baseRR = 60 / profile.hr;
-  const afibFactors = [0.64, 1.08, 0.56, 1.24, 0.72, 0.94, 0.58, 1.15, 0.81, 1.02, 0.66, 1.12];
-  const beatStarts: number[] = [0.08];
-  let idx = 0;
-  while (beatStarts[beatStarts.length - 1] < durationSec + 0.6) {
-    const rr = profile.isAFib ? baseRR * afibFactors[idx % afibFactors.length] : baseRR;
-    beatStarts.push(beatStarts[beatStarts.length - 1] + rr);
-    idx += 1;
-  }
-
-  // Independent atrial P waves for complete AV block (atrial rate ~82 bpm)
-  const pStarts: number[] = [];
-  if (profile.isCompleteAVBlock) {
-    for (let pt = 0.05; pt < durationSec + 0.5; pt += 60 / 82) {
-      pStarts.push(pt);
-    }
-  }
-
-  const dt = 0.007;
-  const pts: string[] = [];
-  for (let t = 0; t <= durationSec; t += dt) {
-    let mv = 0;
-    for (let b = 0; b < beatStarts.length; b++) {
-      const localT = t - beatStarts[b] + 0.18;
-      if (localT >= 0 && localT <= 0.68) {
-        mv += sampleEcgLeadMv(localT, b, lead, profile, profile.isCompleteAVBlock);
-      }
-    }
-    if (profile.isCompleteAVBlock) {
-      const pAmp = lead === 'aVR' ? -0.13 : lead === 'DII' ? 0.16 : 0.1;
-      for (const pt of pStarts) {
-        mv += pAmp * gaussian(t, pt, 0.019);
-      }
-    }
-    const px = x0 + t * pxPerSec;
-    const py = yBaseline - mv * pxPerMv;
-    pts.push(`${px.toFixed(1)},${py.toFixed(1)}`);
-  }
-  return pts.join(' ');
-}
-
 const EcgTwelveLeadViewer: React.FC<{
   study: ComplementaryStudy;
   vitalSigns?: VitalSigns;
   dark?: boolean;
 }> = ({ study, vitalSigns, dark = false }) => {
-  const profile = useMemo(() => parseEcgProfile(study, vitalSigns), [study, vitalSigns]);
+  const uid = useId().replace(/:/g, '');
+
+  // Keep the 12-lead paper tracing strictly static once printed for the current study state
+  // (avoids 1-second telemetry micro-oscillation jittering the printed ECG waves).
+  const studySnapshotKey = `${study.id}::${study.result}::${study.interpretation || ''}`;
+  const frozenSnapshotRef = useRef<{ key: string; vitals?: VitalSigns }>({
+    key: studySnapshotKey,
+    vitals: vitalSigns,
+  });
+  if (frozenSnapshotRef.current.key !== studySnapshotKey) {
+    frozenSnapshotRef.current = {
+      key: studySnapshotKey,
+      vitals: vitalSigns,
+    };
+  }
+  const staticVitals = frozenSnapshotRef.current.vitals;
+
+  const profile = useMemo(
+    () => parseEcgProfile(study, staticVitals),
+    [study, staticVitals]
+  );
   const [darkMonitor, setDarkMonitor] = useState(dark);
   const [showBaselineGuides, setShowBaselineGuides] = useState(true);
   const [zoomLead, setZoomLead] = useState<LeadName | null>(null);
 
+  // Exact paper calibration: 4 px = 1 mm | 20 px = 5 mm (1 cuadro grande = 0.20 s x 0.5 mV)
   const W = 1000;
   const H = 560;
-  const colWidth = 230;
-  const startX = 48;
-  const rowY = [92, 222, 352];
+  const colWidth = 240; // 12 cuadros grandes = 2.40 s per column
+  const startX = 40; // 2 cuadros grandes left margin (aligned to major grid)
+  const rowY = [100, 220, 340]; // All baselines sit squarely on major 20px grid lines
+  const rhythmY = 480; // Bottom rhythm strip baseline on major 20px grid line
   const pxPerSec = 100; // 25 mm/s -> 100 px/sec (4px = 1mm)
   const pxPerMv = 40; // 10 mm/mV -> 40 px/mV (4px = 1mm)
 
-  const gridBg = darkMonitor ? '#040C17' : '#FFFDF8';
-  const minorGrid = darkMonitor ? 'rgba(30, 58, 95, 0.42)' : 'rgba(235, 136, 136, 0.28)';
-  const majorGrid = darkMonitor ? 'rgba(56, 189, 248, 0.28)' : 'rgba(220, 88, 88, 0.55)';
-  const traceStroke = darkMonitor ? '#22C55E' : '#111827';
-  const labelFill = darkMonitor ? '#7DD3FC' : '#991B1B';
+  const gridBg = darkMonitor ? '#030906' : '#FFFBF6';
+  const minorGrid = darkMonitor ? 'rgba(34, 197, 94, 0.20)' : 'rgba(239, 68, 68, 0.24)';
+  const majorGrid = darkMonitor ? 'rgba(52, 211, 153, 0.56)' : 'rgba(220, 38, 38, 0.58)';
+  const traceStroke = darkMonitor ? '#39FF14' : '#111827';
+  const labelFill = darkMonitor ? '#6EE7B7' : '#991B1B';
   const baselineColor = darkMonitor ? 'rgba(56, 189, 248, 0.45)' : 'rgba(37, 99, 235, 0.45)';
 
-  const zoomStShift = zoomLead ? getStShiftForLead(zoomLead, profile) : 0;
+  const minorGridId = `ecg-paper-minor-${uid}`;
+  const majorGridId = `ecg-paper-major-${uid}`;
+  const zoomMinorGridId = `ecg-zoom-minor-${uid}`;
+  const zoomMajorGridId = `ecg-zoom-major-${uid}`;
 
   return (
     <div className="space-y-3">
@@ -649,7 +95,9 @@ const EcgTwelveLeadViewer: React.FC<{
               25 mm/s · 10 mm/mV · FC 0 lpm (ASISTOLIA)
             </span>
           ) : (
-            <span className={`text-[11px] ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>25 mm/s · 10 mm/mV · FC ~{profile.hr} lpm</span>
+            <span className={`text-[11px] ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
+              25 mm/s · 10 mm/mV · FC ~{profile.hr} lpm
+            </span>
           )}
         </div>
 
@@ -695,7 +143,7 @@ const EcgTwelveLeadViewer: React.FC<{
         </div>
       </div>
 
-      {/* Zoomed Single Lead Inspector */}
+      {/* Zoomed Single Lead Inspector (Exact 5 px = 1 mm, 25 px = 5 mm = 1 cuadro grande) */}
       {zoomLead && (
         <div className={`rounded-xl overflow-hidden border shadow-sm ${dark ? 'border-[#3E8569]' : 'border-[#72A98A]'}`}>
           <div className={`px-3 py-1.5 border-b flex flex-wrap items-center justify-between gap-2 text-[11px] ${dark ? 'bg-[#172621] border-[#243830]' : 'bg-[#F8FBF9] border-[#E2EAE4]'}`}>
@@ -703,53 +151,46 @@ const EcgTwelveLeadViewer: React.FC<{
               Derivación Ampliada: {zoomLead} (25 mm/s · 10 mm/mV)
             </span>
             <div className={`flex items-center gap-3 font-mono ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
-              {Math.abs(zoomStShift) >= 0.08 && (
-                <span>
-                  Desnivel J-ST: {zoomStShift > 0 ? '+' : ''}
-                  {(zoomStShift * 10).toFixed(1)} mm ({zoomStShift > 0 ? '+' : ''}
-                  {zoomStShift.toFixed(2)} mV)
-                </span>
-              )}
-              <span>1 cuadro grande = 200 ms / 5 mm (0.5 mV)</span>
+              <span>1 cuadro grande = 0.20 s / 0.5 mV (5 mm)</span>
             </div>
           </div>
-          <svg viewBox="0 0 1000 190" className="w-full h-auto block" style={{ background: gridBg }}>
+          <svg viewBox="0 0 1000 200" className="w-full h-auto block" style={{ background: gridBg }}>
             <defs>
-              <pattern id="ecg-zoom-minor" width="4" height="4" patternUnits="userSpaceOnUse">
-                <path d="M 4 0 L 0 0 0 4" fill="none" stroke={minorGrid} strokeWidth="0.6" />
+              <pattern id={zoomMinorGridId} width="5" height="5" patternUnits="userSpaceOnUse">
+                <path d="M 5 0 L 0 0 0 5" fill="none" stroke={minorGrid} strokeWidth="0.65" />
               </pattern>
-              <pattern id="ecg-zoom-major" width="20" height="20" patternUnits="userSpaceOnUse">
-                <rect width="20" height="20" fill="url(#ecg-zoom-minor)" />
-                <path d="M 20 0 L 0 0 0 20" fill="none" stroke={majorGrid} strokeWidth="1" />
+              <pattern id={zoomMajorGridId} width="25" height="25" patternUnits="userSpaceOnUse">
+                <rect width="25" height="25" fill={`url(#${zoomMinorGridId})`} />
+                <path d="M 25 0 L 0 0 0 25" fill="none" stroke={majorGrid} strokeWidth="1.2" />
               </pattern>
             </defs>
-            <rect width="1000" height="190" fill="url(#ecg-zoom-major)" />
+            <rect width="1000" height="200" fill={`url(#${zoomMajorGridId})`} />
 
-            {/* Isoelectric TP baseline & +/-0.5mV calibration references */}
+            {/* Isoelectric TP baseline & +/-0.5mV calibration references aligned to major grid lines */}
             {showBaselineGuides && (
               <g>
-                <line x1="56" y1="110" x2="990" y2="110" stroke={baselineColor} strokeWidth="1.2" strokeDasharray="5,4" />
-                <line x1="56" y1="82" x2="990" y2="82" stroke={baselineColor} strokeOpacity="0.45" strokeWidth="0.9" strokeDasharray="2,4" />
-                <line x1="56" y1="138" x2="990" y2="138" stroke={baselineColor} strokeOpacity="0.45" strokeWidth="0.9" strokeDasharray="2,4" />
-                <text x="986" y="106" fill={labelFill} fontSize="10" fontFamily="monospace" textAnchor="end" fontWeight="700">
+                <line x1="50" y1="125" x2="995" y2="125" stroke={baselineColor} strokeWidth="1.2" strokeDasharray="5,4" />
+                <line x1="50" y1="100" x2="995" y2="100" stroke={baselineColor} strokeOpacity="0.45" strokeWidth="0.9" strokeDasharray="2,4" />
+                <line x1="50" y1="150" x2="995" y2="150" stroke={baselineColor} strokeOpacity="0.45" strokeWidth="0.9" strokeDasharray="2,4" />
+                <text x="990" y="121" fill={labelFill} fontSize="10" fontFamily="monospace" textAnchor="end" fontWeight="700">
                   Basal TP (0 mV)
                 </text>
-                <text x="986" y="78" fill={labelFill} fontSize="9.5" fontFamily="monospace" textAnchor="end" opacity="0.8">
+                <text x="990" y="96" fill={labelFill} fontSize="9.5" fontFamily="monospace" textAnchor="end" opacity="0.8">
                   +0.5 mV (+5 mm)
                 </text>
-                <text x="986" y="149" fill={labelFill} fontSize="9.5" fontFamily="monospace" textAnchor="end" opacity="0.8">
+                <text x="990" y="162" fill={labelFill} fontSize="9.5" fontFamily="monospace" textAnchor="end" opacity="0.8">
                   -0.5 mV (-5 mm)
                 </text>
               </g>
             )}
 
-            {/* 1mV calibration pulse (56 px = 1.0 mV at zoomed scale) */}
-            <polyline points="14,110 22,110 22,54 44,54 44,110 52,110" fill="none" stroke={traceStroke} strokeWidth="1.8" />
+            {/* 1mV calibration pulse (50 px = 1.0 mV = 2 cuadros grandes tall x 25 px = 1 cuadro grande wide) */}
+            <polyline points="8,125 13,125 13,75 38,75 38,125 46,125" fill="none" stroke={traceStroke} strokeWidth="1.8" />
             <polyline
-              points={buildLeadPolylinePoints(zoomLead, profile, 6.2, 60, 110, 145, 56)}
+              points={buildLeadPolylinePoints(zoomLead, profile, 7.6, 50, 125, 125, 50)}
               fill="none"
               stroke={traceStroke}
-              strokeWidth="2.1"
+              strokeWidth="2.0"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -757,28 +198,28 @@ const EcgTwelveLeadViewer: React.FC<{
         </div>
       )}
 
-      {/* Main 12-Lead Standard ECG Sheet */}
+      {/* Main 12-Lead Standard Static ECG Paper Sheet */}
       <div className={`rounded-xl overflow-x-auto border shadow-xs ${dark ? 'border-[#294037]' : 'border-[#E2EAE4]'}`}>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[680px] h-auto block" style={{ background: gridBg }}>
           <defs>
-            <pattern id="ecg-minor" width="4" height="4" patternUnits="userSpaceOnUse">
-              <path d="M 4 0 L 0 0 0 4" fill="none" stroke={minorGrid} strokeWidth="0.55" />
+            <pattern id={minorGridId} width="4" height="4" patternUnits="userSpaceOnUse">
+              <path d="M 4 0 L 0 0 0 4" fill="none" stroke={minorGrid} strokeWidth="0.65" />
             </pattern>
-            <pattern id="ecg-major" width="20" height="20" patternUnits="userSpaceOnUse">
-              <rect width="20" height="20" fill="url(#ecg-minor)" />
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke={majorGrid} strokeWidth="0.95" />
+            <pattern id={majorGridId} width="20" height="20" patternUnits="userSpaceOnUse">
+              <rect width="20" height="20" fill={`url(#${minorGridId})`} />
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke={majorGrid} strokeWidth="1.15" />
             </pattern>
           </defs>
-          <rect width={W} height={H} fill="url(#ecg-major)" />
+          <rect width={W} height={H} fill={`url(#${majorGridId})`} />
 
-          {/* Row Calibration Pulses (1 mV = 40 px) */}
-          {[...rowY, 478].map((yb, rIdx) => (
+          {/* Row Calibration Pulses (1 mV = 40 px = 2 cuadros grandes tall, 20 px = 1 cuadro grande wide) */}
+          {[...rowY, rhythmY].map((yb, rIdx) => (
             <polyline
               key={`cal-${rIdx}`}
-              points={`14,${yb} 22,${yb} 22,${yb - 40} 34,${yb - 40} 34,${yb} 42,${yb}`}
+              points={`8,${yb} 12,${yb} 12,${yb - 40} 32,${yb - 40} 32,${yb} 38,${yb}`}
               fill="none"
               stroke={traceStroke}
-              strokeWidth="1.4"
+              strokeWidth="1.5"
             />
           ))}
 
@@ -787,15 +228,14 @@ const EcgTwelveLeadViewer: React.FC<{
             rowLeads.map((lead, cIdx) => {
               const x0 = startX + cIdx * colWidth;
               const y0 = rowY[rIdx];
-              const polyPts = buildLeadPolylinePoints(lead, profile, 2.15, x0 + 6, y0, pxPerSec, pxPerMv);
-              const leadShift = getStShiftForLead(lead, profile);
+              const polyPts = buildLeadPolylinePoints(lead, profile, 2.28, x0 + 4, y0, pxPerSec, pxPerMv);
 
               return (
                 <g key={lead} onClick={() => setZoomLead(lead)} className="cursor-pointer group">
                   <rect
                     x={x0}
                     y={y0 - 65}
-                    width={colWidth - 8}
+                    width={colWidth - 4}
                     height={118}
                     fill="transparent"
                     className="group-hover:stroke-sky-500/70"
@@ -809,15 +249,15 @@ const EcgTwelveLeadViewer: React.FC<{
                       x2={x0}
                       y2={y0 + 18}
                       stroke={majorGrid}
-                      strokeWidth="1.2"
+                      strokeWidth="1.35"
                       strokeDasharray="3,2"
                     />
                   )}
                   {showBaselineGuides && (
                     <line
-                      x1={x0 + 6}
+                      x1={x0 + 4}
                       y1={y0}
-                      x2={x0 + colWidth - 10}
+                      x2={x0 + colWidth - 8}
                       y2={y0}
                       stroke={baselineColor}
                       strokeWidth="0.9"
@@ -827,21 +267,6 @@ const EcgTwelveLeadViewer: React.FC<{
                   <text x={x0 + 8} y={y0 - 44} fill={labelFill} fontSize="13" fontWeight="700" fontFamily="monospace">
                     {lead}
                   </text>
-                  {/* Objective physical ST measurement badge when guide ON & significant shift */}
-                  {showBaselineGuides && Math.abs(leadShift) >= 0.1 && (
-                    <text
-                      x={x0 + colWidth - 14}
-                      y={y0 - 44}
-                      fill={darkMonitor ? '#38BDF8' : '#1D4ED8'}
-                      fontSize="10"
-                      fontWeight="700"
-                      fontFamily="monospace"
-                      textAnchor="end"
-                    >
-                      ST {leadShift > 0 ? '+' : ''}
-                      {(leadShift * 10).toFixed(1)}mm
-                    </text>
-                  )}
                   <polyline
                     points={polyPts}
                     fill="none"
@@ -859,20 +284,20 @@ const EcgTwelveLeadViewer: React.FC<{
           <g onClick={() => setZoomLead('DII')} className="cursor-pointer">
             {showBaselineGuides && (
               <line
-                x1={startX + 6}
-                y1={478}
-                x2={W - 22}
-                y2={478}
+                x1={startX + 4}
+                y1={rhythmY}
+                x2={W - 16}
+                y2={rhythmY}
                 stroke={baselineColor}
                 strokeWidth="0.95"
                 strokeDasharray="4,3"
               />
             )}
-            <text x={startX + 8} y={434} fill={labelFill} fontSize="13" fontWeight="700" fontFamily="monospace">
+            <text x={startX + 8} y={436} fill={labelFill} fontSize="13" fontWeight="700" fontFamily="monospace">
               DII (Tira de Ritmo)
             </text>
             <polyline
-              points={buildLeadPolylinePoints('DII', profile, 9.2, startX + 6, 478, pxPerSec, pxPerMv)}
+              points={buildLeadPolylinePoints('DII', profile, 9.4, startX + 4, rhythmY, pxPerSec, pxPerMv)}
               fill="none"
               stroke={traceStroke}
               strokeWidth="1.65"
@@ -882,13 +307,13 @@ const EcgTwelveLeadViewer: React.FC<{
           </g>
 
           <text x={startX} y={544} fill={labelFill} fontSize="11" fontFamily="monospace">
-            25 mm/s   10 mm/mV   Filtro: 0.05–150 Hz   (Línea azul discontinua = Basal isoeléctrica TP · Clic para ampliar)
+            25 mm/s   10 mm/mV   1 cuadro grande = 0.20 s / 0.5 mV   (Línea azul discontinua = Basal isoeléctrica TP · Clic para ampliar)
           </text>
         </svg>
       </div>
       <div className={`flex items-center justify-end text-[11px] gap-1 ${dark ? 'text-[#8EA69B]' : 'text-[#55685F]'}`}>
         <Maximize2 className={`w-3 h-3 ${dark ? 'text-[#68C79F]' : 'text-[#43866B]'}`} />
-        <span>Haga clic sobre cualquier derivación (DI–V6) para medir amplitudes y segmento ST ampliados</span>
+        <span>Haga clic sobre cualquier derivación (DI–V6) para ampliarla sobre papel milimetrado</span>
       </div>
     </div>
   );
@@ -934,6 +359,10 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
 
   const profile: EcgProfile = {
     hr: vitalSigns?.heartRate === 0 ? 0 : isAFib ? Math.max(96, meanHr) : meanHr,
+    atrialHr: 80,
+    prMs: 160,
+    qrsMs: 85,
+    qtcMs: 410,
     isAsystole: vitalSigns?.heartRate === 0,
     isAFib: isAFib && !isParoxysmal ? true : false,
     isParoxysmalMix: false,
@@ -950,7 +379,9 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
     isExtensiveAnterior: false,
     isInferiorSTEMI: false,
     isLateralSTEMI: false,
+    isTakotsubo: false,
     stElevationMv: 0,
+    stDepressionMv: 0,
     isStDepression: false,
     isPericarditis: false,
     isPeakedT: false,
@@ -958,6 +389,7 @@ const HolterEcgViewer: React.FC<{ study: ComplementaryStudy; vitalSigns?: VitalS
     isInvertedT: false,
     invertedTLeads: null,
     isLVH: false,
+    isLowVoltage: false,
     isAlternans: false,
     isLongQT: false,
     isFlatT: false,

@@ -775,7 +775,9 @@ export function buildLiveStudies(
         isAbnormal = true;
         liveStatus = 'iatrogenia';
         liveUpdateNote = 'QTc prolongado (>510 ms)';
-      } else if (Math.abs(liveVitals.heartRate - snap.baseVitals.heartRate) >= 15) {
+      } else if (
+        Math.abs(liveVitals.heartRate - snap.baseVitals.heartRate) >= (statInterventions.length > 0 ? 4 : 6)
+      ) {
         result = `${result}\n\n[ACTUALIZACIÓN EN TIEMPO REAL]: Frecuencia cardíaca actual en tira de control: ${liveVitals.heartRate} lpm (PA ${bpDisplay} mmHg).`;
         liveStatus = snap.improvedHemodynamics ? 'mejoria' : 'evolucion';
         liveUpdateNote = `FC en vivo: ${liveVitals.heartRate} lpm`;

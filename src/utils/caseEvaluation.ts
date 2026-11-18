@@ -458,7 +458,11 @@ function stripNegatedMedicationClauses(text: string): string {
       /(?:\b(?:por|con|ante|debido\s+a|en)\s+)?alergi[ao]s?\s+(?:grave\s+|severa\s+|documentada\s+)?(?:tipo\s*\d+\s+)?(?:anafilactic[ao]\s+)?a\s+[^.,;)]+/gi,
       ' '
     )
-    .replace(/\balternativa\s+(?:segura\s+)?(?:a|ante|por)\s+[^.,;)]+/gi, ' ');
+    .replace(/\balternativa\s+(?:segura\s+)?(?:a|ante|por)\s+[^.,;)]+/gi, ' ')
+    .replace(
+      /\b(?:en\s+reemplazo\s+de(?:l)?|en\s+sustitucion\s+de(?:l)?|sustituyendo\s+(?:a|al)|reemplazando\s+(?:a|al)|tras\s+(?:suspender|retirar|omitir))\s+[^.,;)]+/gi,
+      ' '
+    );
   const sentences = noAccents.split(/[.;\n]+/);
   const kept = sentences.map((seg) =>
     seg.replace(
@@ -808,6 +812,37 @@ function checkCriticalSafetyErrors(
     ) {
       errors.push(
         '¡ERROR CRÍTICO CARDIOLÓGICO!: Prescripción o mantenimiento de fármacos frenadores del nodo AV/conducción (betabloqueadores, verapamilo, diltiazem, digoxina o amiodarona) en paciente con bloqueo de conducción; riesgo grave de progresión a bloqueo AV completo o asistolia.'
+      );
+    }
+  }
+
+  // 23c. Disección Aórtica Aguda + Anticoagulantes / Fibrinolíticos / Antiagregantes
+  if (diagNorm.includes('diseccion aortica')) {
+    if (
+      /\b(aspirina|acido acetilsalicilico|aas|asa|clopidogrel|ticagrelor|prasugrel|heparina|enoxaparina|warfarina|apixaban|rivaroxaban|alteplasa|tenecteplasa|estreptoquinasa)\b/.test(
+        activeRxOnly
+      )
+    ) {
+      errors.push(
+        '¡ERROR CRÍTICO VASCULAR!: Prescripción de antitrombóticos o fibrinolíticos en Disección Aórtica Aguda; precipita extensión de disección, taponamiento pericárdico y rotura aórtica fatal.'
+      );
+    }
+  }
+
+  // 23d. Intoxicación por Paracetamol + Paracetamol
+  if (/intoxicacion.*paracetamol|intoxicacion.*acetaminofen|sobredosis.*paracetamol/.test(diagNorm)) {
+    if (/\b(paracetamol|acetaminofen)\b/.test(activeRxOnly)) {
+      errors.push(
+        '¡ERROR CRÍTICO TOXICOLÓGICO!: Prescripción de Paracetamol adicional en Intoxicación por Paracetamol; agrava la necrosis hepática fulminante.'
+      );
+    }
+  }
+
+  // 23e. Enfermedad de Parkinson + Bloqueadores dopaminérgicos centrales
+  if (diagNorm.includes('parkinson')) {
+    if (/\b(metoclopramida|haloperidol|clorpromazina|risperidona)\b/.test(activeRxOnly)) {
+      errors.push(
+        '¡ERROR CRÍTICO NEUROLÓGICO!: Prescripción de antagonista dopaminérgico central (metoclopramida/haloperidol) en Enfermedad de Parkinson; precipita rigidez severa y crisis acinética.'
       );
     }
   }
@@ -1438,7 +1473,7 @@ const MEDICATION_CLASS_PROFILES: MedicationClassProfile[] = [
     classLabel: 'Broncodilatador adrenérgico / anticolinérgico',
     pattern: /\b(salbutamol|albuterol|fenoterol|ipratropio|tiotropio|salmeterol|formoterol|budesonida|beclometasona)\b/,
     mechanism: 'broncodilatación o control de inflamación de vía aérea',
-    symptomaticContexts: /asma|epoc|bronquitis|sibilanc|disnea|bronquiolitis|anafilax/,
+    symptomaticContexts: /asma|epoc|bronquitis|sibilanc|broncoespasmo|bronquiolitis|crup|anafilax/,
   },
   {
     id: 'antitusigenos_mucoliticos',
@@ -1534,11 +1569,22 @@ function findMedicationClassProfile(drugTextNorm: string): MedicationClassProfil
 
 function getItemContraindicationReason(
   item: MedicationItem,
-  caseData: ClinicalCase
+  caseData: ClinicalCase,
+  fullPlan: MedicationItem[] = []
 ): string | null {
+  const fullPlanJoined = normStr(fullPlan.map((m) => `${m.drug} ${m.dose}`).join(' '));
   const itemAudit = auditMedicationPlanSafety([item], caseData);
   if (itemAudit.errors.length > 0) {
-    return itemAudit.errors[0];
+    const firstErr = itemAudit.errors[0];
+    const isMyxedemaPairingSafe =
+      normStr(firstErr).includes('coma mixedematoso') &&
+      /\b(hidrocortisona|dexametasona|metilprednisolona)\b/.test(fullPlanJoined);
+    const isPheoPairingSafe =
+      normStr(firstErr).includes('feocromocitoma') &&
+      /\b(fentolamina|fenoxibenzamina|prazosina|doxazosina|nicardipino)\b/.test(fullPlanJoined);
+    if (!isMyxedemaPairingSafe && !isPheoPairingSafe) {
+      return firstErr;
+    }
   }
   const active = stripNegatedMedicationClauses(`${item.drug} ${item.dose} ${item.route}`);
   if (!active) return null;
@@ -1626,8 +1672,22 @@ function getItemContraindicationReason(
   if (diagNorm.includes('ectopico') && diagNorm.includes('roto') && /\b(metotrexato|methotrexate|mtx)\b/.test(active)) {
     return `Contraindicado en embarazo ectópico roto con hemoperitoneo; requiere resolución quirúrgica urgente.`;
   }
-  if (diagNorm.includes('serotoninergico') && /\b(sertralina|fluoxetina|paroxetina|citalopram|escitalopram|venlafaxina|tramadol|dextrometorfano|linezolid|haloperidol|succinilcolina)\b/.test(active)) {
+  if (diagNorm.includes('serotoninergico') && /\b(sertralina|fluoxetina|paroxetina|citalopram|escitalopram|venlafaxina|tramadol|dextrometorfano|linezolid|haloperidol|succinilcolina|ondansetron|metoclopramida|litio)\b/.test(active)) {
     return `Contraindicado en Síndrome Serotoninérgico: perpetúa o agrava la toxicidad neuromuscular y autonómica.`;
+  }
+  if (
+    diagNorm.includes('diseccion aortica') &&
+    /\b(aspirina|acido acetilsalicilico|aas|asa|clopidogrel|ticagrelor|prasugrel|heparina|enoxaparina|warfarina|apixaban|rivaroxaban|alteplasa|tenecteplasa|estreptoquinasa)\b/.test(
+      active
+    )
+  ) {
+    return `Contraindicado en Disección Aórtica Aguda: el antitrombótico/fibrinolítico precipita rotura aórtica y taponamiento fatal.`;
+  }
+  if (/intoxicacion.*paracetamol|intoxicacion.*acetaminofen|sobredosis.*paracetamol/.test(diagNorm) && /\b(paracetamol|acetaminofen)\b/.test(active)) {
+    return `Contraindicado en Intoxicación por Paracetamol: agrava la toxicidad hepática por NAPQI.`;
+  }
+  if (diagNorm.includes('parkinson') && /\b(metoclopramida|haloperidol|clorpromazina|risperidona)\b/.test(active)) {
+    return `Contraindicado en Enfermedad de Parkinson: el bloqueo dopaminérgico central precipita rigidez extrema y acinesia aguda.`;
   }
   return null;
 }
@@ -1695,7 +1755,7 @@ function evaluateProposedMedications(
     }
 
     // Caso 2: Riesgo crítico o contraindicación en este paciente
-    const safetyIssue = getItemContraindicationReason(item, caseData);
+    const safetyIssue = getItemContraindicationReason(item, caseData, userRx);
     if (safetyIssue) {
       return {
         id: item.id,
@@ -2644,7 +2704,7 @@ export function buildDidacticEvaluation(
         drug: rec.drug,
         dose: rec.dose,
         route: rec.route,
-        verdict: 'adecuado',
+        verdict: 'parcial_o_sin_efecto',
         comment: rec.physiologicalEffectSummary,
         deltaSummary,
       };
@@ -2934,8 +2994,8 @@ export function buildDidacticEvaluation(
       (userIsSurgery && expectedIsSurgery) ||
       (userIsSurgery && surgicalCase && expectedRank === 3));
 
-  const hasReferral = (submission.referralCriteria || '').trim().length >= 10;
-  const hasFollowUp = (submission.followUpPlan || '').trim().length >= 10;
+  const hasReferral = String(submission.referralCriteria || '').trim().length >= 10;
+  const hasFollowUp = String(submission.followUpPlan || '').trim().length >= 10;
   const redFlagSource = normStr(
     `${submission.followUpPlan || ''} ${submission.referralCriteria || ''} ${submission.generalMeasures || ''}`
   );
@@ -3582,19 +3642,34 @@ export function determineClinicalOutcome(
       hasGeneralMeasures ||
       userRx.length > 0);
 
+  const baseVitals = evaluation.userSummary?.baselineVitalSigns || caseData.vitalSigns;
+  const baseBpSys = baseVitals ? parseBloodPressurePair(baseVitals.bloodPressure).sys : 120;
   const finalVitals = evaluation.userSummary?.finalVitalSigns || caseData.vitalSigns;
   const endBpSys = finalVitals ? parseBloodPressurePair(finalVitals.bloodPressure).sys : 120;
   const isImmediateIatrogenicDeath = Boolean(
     evaluation.statAudit?.immediateDeathReason ||
       (finalVitals && (finalVitals.heartRate === 0 || (finalVitals.bloodPressure || '').startsWith('0/')))
   );
-  const unrescuedFatalIatrogenicVitals = Boolean(
+  const worsenedToFatalVitals = Boolean(
+    finalVitals &&
+      ((typeof finalVitals.bloodGlucose === 'number' &&
+        finalVitals.bloodGlucose < 35 &&
+        (typeof baseVitals?.bloodGlucose !== 'number' || baseVitals.bloodGlucose >= 35)) ||
+        (finalVitals.glasgow <= 6 && (!baseVitals || baseVitals.glasgow > 6)) ||
+        (finalVitals.respiratoryRate <= 6 && (!baseVitals || baseVitals.respiratoryRate > 6)) ||
+        (endBpSys < 65 && baseBpSys >= 65))
+  );
+  const startedAtFatalThreshold = Boolean(
     finalVitals &&
       ((typeof finalVitals.bloodGlucose === 'number' && finalVitals.bloodGlucose < 35) ||
         finalVitals.glasgow <= 6 ||
         finalVitals.respiratoryRate <= 6 ||
         endBpSys < 65)
   );
+  const unrescuedBaselineThreshold =
+    startedAtFatalThreshold &&
+    (!hasStrongTreatment || hasAnySafetyError || statVerdict === 'omitido_en_inestabilidad');
+  const unrescuedFatalIatrogenicVitals = worsenedToFatalVitals || unrescuedBaselineThreshold;
   const hasFatalDefinitivePrescription =
     nonStatPlan.length > 0 &&
     auditMedicationPlanSafety(nonStatPlan, caseData).errors.some((e) =>
@@ -3696,7 +3771,7 @@ export function determineClinicalOutcome(
   // 2. Morbilidad Grave / Rescate en UCI o Reingreso Hospitalario (por tratamiento insuficiente, erróneo o egreso inseguro en cuadro urgente/grave)
   if (
     hasLethalError ||
-    (vitalThreat && (!hasStrongTreatment || userRank === 1 || userRank === 2)) ||
+    (vitalThreat && (!hasStrongTreatment || userRank === 1 || (userRank === 2 && expectedRank > 2))) ||
     (!vitalThreat &&
       !isOutpatientCase &&
       (nonLethalErrors.length > 0 ||

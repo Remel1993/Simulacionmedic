@@ -18,6 +18,8 @@ import { buildLivePhysicalExams, buildLiveStudies } from '../engine/liveClinical
 import { evaluateClinicalCaseLocally, evaluateClinicalOutcomeLocally } from '../engine/evaluationEngine';
 import { deriveDisclosedBackground } from '../utils/backgroundDisclosure';
 import { StudyTracingViewer, detectTracingKind } from './StudyTracingViewer';
+import { EcgMonitorStrip } from './EcgMonitorStrip';
+import { findCaseEcgStudy } from '../utils/ecgWaveform';
 import { ClinicalAuditTab } from './ClinicalAuditTab';
 import { PatientVisualCard } from './PatientVisualCard';
 import {
@@ -570,6 +572,11 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
     );
   }, [activeCase, activeDraft?.liveVitalSigns, activeDraft?.statInterventions, activeDraft?.evolutionState]);
 
+  const liveEcgStudy = useMemo(
+    () => findCaseEcgStudy(liveStudies, activeDraft?.liveVitalSigns),
+    [liveStudies, activeDraft?.liveVitalSigns]
+  );
+
   const filteredExams = useMemo(() => {
     if (examSystemFilter === 'Todos') return liveExams;
     return liveExams.filter((pe) => pe.system === examSystemFilter);
@@ -614,6 +621,8 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
     activeDraft.statInterventions.some((s) => s.isImmediateDeath) ||
     activeDraft.liveVitalSigns.heartRate === 0 ||
     (activeDraft.liveVitalSigns.bloodPressure || '').startsWith('0/');
+  const isUnconscious = !isDeceased && activeDraft.liveVitalSigns.glasgow <= 9;
+  const isChatBlocked = isDeceased || isUnconscious;
 
   const disclosedBg = deriveDisclosedBackground(activeDraft.messages, Boolean(activeDraft.result));
   const perPatientRemaining = Math.max(0, 180 - activeDraft.elapsedSeconds);
@@ -1141,6 +1150,15 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
             )}
           </div>
 
+          {config.profile === 'urgencias' && (
+            <EcgMonitorStrip
+              compact
+              study={liveEcgStudy}
+              vitalSigns={activeDraft.liveVitalSigns}
+              isDeceased={isDeceased}
+            />
+          )}
+
           {/* Immediate Death Banner if iatrogenic fatality occurred */}
           {(activeDraft.immediateDeathAlert || isDeceased) && (
             <div className="bg-rose-950/75 border border-rose-700/70 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-200">
@@ -1221,15 +1239,24 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   </div>
                 </div>
 
+                {isUnconscious && (
+                  <div className="bg-amber-950/60 border border-amber-700/70 rounded-lg px-2.5 py-2 text-[11px] text-amber-200 flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Paciente inconsciente (Glasgow {activeDraft.liveVitalSigns.glasgow}/15):</strong> no responde al interrogatorio; prioriza examen físico, estudios y estabilización STAT.
+                    </span>
+                  </div>
+                )}
+
                 {/* 5 One-Click Interrogatorio Buttons */}
                 <div className="flex flex-wrap gap-1.5">
                   {QUICK_INTERROGATION_PROMPTS.map((q) => (
                     <button
                       key={q.id}
                       type="button"
-                      disabled={Boolean(activeDraft.result) || isDeceased}
+                      disabled={Boolean(activeDraft.result) || isChatBlocked}
                       onClick={() => handleAskQuestion(q.prompt)}
-                      className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#172621] hover:bg-[#183329] disabled:opacity-45 border border-[#294037] hover:border-[#4CA07E] text-[11px] font-semibold text-[#E8F2ED] cursor-pointer transition-colors"
+                      className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#172621] hover:bg-[#183329] disabled:opacity-45 disabled:pointer-events-none border border-[#294037] hover:border-[#4CA07E] text-[11px] font-semibold text-[#E8F2ED] cursor-pointer transition-colors"
                     >
                       + {q.label}
                     </button>
@@ -1293,14 +1320,20 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   <input
                     type="text"
                     value={customQuestion}
-                    disabled={Boolean(activeDraft.result) || isDeceased}
+                    disabled={Boolean(activeDraft.result) || isChatBlocked}
                     onChange={(e) => setCustomQuestion(e.target.value)}
-                    placeholder="Pregunta puntual al paciente..."
-                    className="flex-1 min-w-0 bg-[#172621] border border-[#294037] rounded-lg px-3 py-2 text-xs text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-[#52B78E]"
+                    placeholder={
+                      isDeceased
+                        ? 'Paciente fallecido (asistolia)...'
+                        : isUnconscious
+                          ? `Paciente inconsciente (Glasgow ${activeDraft.liveVitalSigns.glasgow}/15)...`
+                          : 'Pregunta puntual al paciente...'
+                    }
+                    className="flex-1 min-w-0 bg-[#172621] border border-[#294037] rounded-lg px-3 py-2 text-xs text-[#E8F2ED] placeholder-[#7C9489] focus:outline-none focus:border-[#52B78E] disabled:opacity-45"
                   />
                   <button
                     type="submit"
-                    disabled={!customQuestion.trim() || Boolean(activeDraft.result) || isDeceased}
+                    disabled={!customQuestion.trim() || Boolean(activeDraft.result) || isChatBlocked}
                     className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#2F7A63] hover:bg-[#3A8E74] disabled:opacity-45 text-white cursor-pointer transition-colors"
                   >
                     <Send className="w-3.5 h-3.5" />

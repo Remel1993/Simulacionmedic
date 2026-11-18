@@ -33,6 +33,7 @@ interface HomeDashboardProps {
   onClassificationChange?: (val: GameMode | 'turno_medico') => void;
   onPreferencesChange?: (mode: GameMode, specialty: Specialty) => void;
   completedCaseIds?: string[];
+  customCaseIds?: string[];
   history?: SavedCaseRecord[];
   onStartNextUnseen?: (mode: GameMode, specialty: Specialty) => Promise<void>;
   onRetryCase?: (caseId: string, mode?: GameMode) => Promise<void>;
@@ -146,6 +147,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onClassificationChange,
   onPreferencesChange,
   completedCaseIds = [],
+  customCaseIds = [],
   history = [],
   onStartNextUnseen,
   onRetryCase,
@@ -177,13 +179,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const ActiveIcon = isTurno ? Zap : activeModeObj?.icon || Stethoscope;
 
   const { resolvedCount, masteryPct, averageScore, pendingReviewCase } = useMemo(() => {
-    const libraryIds = new Set(ALL_CURATED_CASES.map((c) => c.id));
+    const libraryIds = new Set([
+      ...ALL_CURATED_CASES.map((c) => c.id),
+      ...customCaseIds,
+    ]);
+    const effectiveTotal = Math.max(libraryCount, libraryIds.size);
     const uniqueCompleted = new Set([
       ...completedCaseIds,
       ...history.map((h) => h.caseId).filter(Boolean),
     ]);
     const resolved = Array.from(uniqueCompleted).filter((id) => libraryIds.has(id)).length;
-    const pct = libraryCount > 0 ? Math.min(100, Math.round((resolved / libraryCount) * 100)) : 0;
+    const pct = effectiveTotal > 0 ? Math.min(100, Math.round((resolved / effectiveTotal) * 100)) : 0;
     const avg =
       history.length > 0
         ? Math.round(history.reduce((sum, h) => sum + h.score, 0) / history.length)
@@ -214,7 +220,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       averageScore: avg,
       pendingReviewCase: candidates[0]?.record || null,
     };
-  }, [completedCaseIds, history, libraryCount]);
+  }, [completedCaseIds, customCaseIds, history, libraryCount]);
 
   const handleClassificationChange = (val: ClassificationKey) => {
     setClassification(val);
