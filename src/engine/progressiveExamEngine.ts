@@ -265,8 +265,12 @@ function buildStep1DiagnosticQuestion(
 
 function pickKeyDiagnosticStudy(caseData: ClinicalCase): ComplementaryStudy | null {
   const pool = caseData.studiesPool || [];
-  const abnormal = pool.filter((s) => s.isAbnormal);
-  if (abnormal.length > 0) return abnormal[0];
+  const nativeAbnormal = pool.find((s) => !s.id.startsWith('hosp-') && s.isAbnormal);
+  if (nativeAbnormal) return nativeAbnormal;
+  const anyAbnormal = pool.find((s) => s.isAbnormal);
+  if (anyAbnormal) return anyAbnormal;
+  const nativeAny = pool.find((s) => !s.id.startsWith('hosp-'));
+  if (nativeAny) return nativeAny;
   return pool[0] || null;
 }
 
@@ -870,10 +874,13 @@ export function evaluateProgressiveExam(
       caseData.clinicalMetadata?.certaintyTier || 'guia_clinica';
     const tierMeta = CERTAINTY_TIER_META[tier];
 
-    const keyStudies = (caseData.studiesPool || [])
+    const nativeStudies = (caseData.studiesPool || []).filter((s) => !s.id.startsWith('hosp-'));
+    const otherStudies = (caseData.studiesPool || []).filter((s) => s.id.startsWith('hosp-'));
+    const prioritizedPool = [...nativeStudies, ...otherStudies];
+    const keyStudies = prioritizedPool
       .filter((s) => s.isAbnormal)
       .slice(0, 4)
-      .concat((caseData.studiesPool || []).filter((s) => !s.isAbnormal).slice(0, 2));
+      .concat(prioritizedPool.filter((s) => !s.isAbnormal).slice(0, 2));
 
     const optimalFirstRx = caseData.solution.optimalTreatment.pharmacological[0];
     const expectedConduct = `Confirmar ${caseData.solution.correctDiagnosis} mediante semiología dirigida y estudios clave (${(caseData.solution.recommendedWorkup || []).slice(0, 3).join(', ') || 'paraclínicos del caso'}), instaurar ${optimalFirstRx ? `${optimalFirstRx.drug} (${optimalFirstRx.dose}, ${optimalFirstRx.route}, ${optimalFirstRx.frequency})` : 'medidas de soporte indicadas'} y definir destino "${caseData.solution.optimalTreatment.hospitalizationDecision}".`;

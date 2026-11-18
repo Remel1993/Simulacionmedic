@@ -676,7 +676,7 @@ export const UNCOMMON_AND_FOREIGN_CASES: ClinicalCase[] = [
     },
     background: {
       pathological: ['Previamente sana; sin antecedentes de lupus ni fármacos recientes nuevos.'],
-      nonPathological: ['No consume alcohol ni drogas; prueba de embarazo negativa.'],
+      nonPathological: ['No consume alcohol ni drogas; ciclos menstruales regulares, última menstruación hace dos semanas.'],
       family: ['Sin antecedentes heredofamiliares relevantes.'],
       surgical: ['Ninguna.'],
       currentMedications: ['Ninguno.'],
@@ -1801,8 +1801,8 @@ export const UNCOMMON_AND_FOREIGN_CASES: ClinicalCase[] = [
       heightCm: 175,
     },
     background: {
-      pathological: ['Previamente sano; prueba de VIH negativa reciente.'],
-      nonPathological: ['Estancia de 4 meses en zona rural mediterránea endémica de Leishmania infantum conviviendo con perros con lesiones cutáneas y exposición nocturna a flebótomos ("beatillas").'],
+      pathological: ['Previamente sano; niega enfermedades crónicas conocidas.'],
+      nonPathological: ['Estancia de 4 meses en zona rural mediterránea conviviendo con perros con lesiones cutáneas y exposición nocturna a mosquitos pequeños ("beatillas").'],
       family: ['Sin antecedentes familiares relevantes referidos.'],
       surgical: ['Ninguna.'],
       currentMedications: ['Tomó amoxicilina y paracetamol sin respuesta clínica.'],

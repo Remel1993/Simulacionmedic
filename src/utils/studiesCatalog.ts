@@ -1,12 +1,12 @@
 import { ClinicalCase, ComplementaryStudy } from '../types/clinical';
+import { normalizeStudiesPoolToSingleTests } from './studySingleizer';
 
 /**
  * Universal Hospital Diagnostic Catalog
  * Proporciona un menú hospitalario estandarizado completo de práctica clínica diaria
- * (incluyendo Gasometría arterial, Biometría Hemática, Química Sanguínea, Electrolitos,
- * Perfil Hepático, PCR/VSG, β-hCG, Urocultivo, Perfil Tiroideo, TAC, RMN, Rx, US y ECG).
- * Además, resuelve dinámicamente hallazgos relacionados anatómica y fisiopatológicamente
- * cuando se solicita un estudio secundario o no confirmatorio.
+ * compuesto exclusivamente por pruebas individuales (sin agrupaciones ni mezclas),
+ * ordenado con criterio clínico discreto para que las pruebas altamente específicas
+ * no aparezcan al inicio del catálogo ni revelen el diagnóstico.
  */
 export const HOSPITAL_SUBCATEGORY_ORDER: ComplementaryStudy['subcategory'][] = [
   'Hematología',
@@ -29,6 +29,7 @@ export const HOSPITAL_SUBCATEGORY_ORDER: ComplementaryStudy['subcategory'][] = [
 ];
 
 export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
+  // ================= HEMATOLOGÍA (orden clínico rutinario -> especializado) =================
   {
     id: 'hosp-hemograma',
     category: 'Laboratorio',
@@ -40,6 +41,88 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
+    id: 'hosp-coagulation',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Tiempos de coagulación (TP, TTPa, INR)',
+    result: 'Tiempo de Protrombina (TP): 12.3 seg (Control: 12.0) | TTPa: 29.5 seg (Control: 30.0) | INR: 1.02 | Fibrinógeno: 320 mg/dL.',
+    referenceRange: 'TP: 11-13.5 seg, TTPa: 25-35 seg, INR: 0.9-1.15',
+    interpretation: 'Cascada de coagulación extrínseca e intrínseca conservadas.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-grupo-rh',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Grupo sanguíneo y factor Rh',
+    result: 'Grupo sanguíneo: O | Factor Rh (D): Positivo.',
+    referenceRange: 'Tipificación ABO y Rh(D)',
+    interpretation: 'Tipificación sanguínea basal registrada.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-frotis',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Frotis de sangre periférica',
+    result: 'Eritrocitos normocíticos normocrómicos sin esquistocitos ni esferocitos; leucocitos maduros sin blastos ni linfocitos atípicos; plaquetas adecuadas en número y morfología.',
+    referenceRange: 'Morfología eritrocitaria, leucocitaria y plaquetaria normal',
+    interpretation: 'Sin alteraciones morfológicas en extendido periférico.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-reticulocitos',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Conteo de reticulocitos',
+    result: 'Reticulocitos: 1.1% (índice de producción reticulocitaria normal).',
+    referenceRange: '0.5 - 2.0%',
+    interpretation: 'Respuesta medular eritropoyética basal normal.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-ferritina',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Ferritina sérica',
+    result: 'Ferritina sérica: 84 ng/mL.',
+    referenceRange: '30 - 300 ng/mL',
+    interpretation: 'Depósitos corporales de hierro dentro de parámetros normales.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-perfil-ferrico',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Hierro sérico, TIBC y saturación de transferrina',
+    result: 'Hierro sérico: 98 mcg/dL | Capacidad total de fijación (TIBC): 310 mcg/dL | Saturación de transferrina: 31.6%.',
+    referenceRange: 'Hierro sérico: 60-170 mcg/dL | TIBC: 250-400 mcg/dL | Sat. transferrina: 20-50%',
+    interpretation: 'Cinética férrica sérica normal; descarta ferropenia circulante.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-dimer-d',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Dímero D cuantitativo',
+    result: 'Dímero D: 210 ng/mL FEU.',
+    referenceRange: '<500 ng/mL FEU',
+    interpretation: 'Valores basales normales. Alto valor predictivo negativo para trombosis activa o CID.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-coombs',
+    category: 'Laboratorio',
+    subcategory: 'Hematología',
+    name: 'Prueba de Coombs directo',
+    result: 'Prueba de antiglobulina directa (Coombs directo): Negativo.',
+    referenceRange: 'Negativo',
+    interpretation: 'Sin evidencia de sensibilización eritrocitaria mediada por autoanticuerpos o complemento.',
+    isAbnormal: false,
+  },
+
+  // ================= BIOQUÍMICA =================
+  {
     id: 'hosp-quimica-basica',
     category: 'Laboratorio',
     subcategory: 'Bioquímica',
@@ -50,43 +133,23 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
-    id: 'hosp-electrolitos',
+    id: 'hosp-perfil-lipidos',
     category: 'Laboratorio',
-    subcategory: 'Electrolitos',
-    name: 'Electrolitos séricos (Na⁺, K⁺, Cl⁻, Ca²⁺, Mg²⁺)',
-    result: 'Sodio (Na⁺): 139 mEq/L | Potasio (K⁺): 4.1 mEq/L | Cloro (Cl⁻): 102 mEq/L | Calcio total: 9.3 mg/dL | Magnesio: 2.0 mg/dL.',
-    referenceRange: 'Na⁺: 135-145 mEq/L | K⁺: 3.5-5.1 mEq/L | Cl⁻: 98-107 mEq/L | Ca²⁺: 8.5-10.5 mg/dL',
-    interpretation: 'Equilibrio hidroelectrolítico sérico dentro de parámetros fisiológicos.',
+    subcategory: 'Bioquímica',
+    name: 'Perfil lipídico (Colesterol total, LDL, HDL, Triglicéridos)',
+    result: 'Colesterol Total: 172 mg/dL | LDL calculado: 96 mg/dL | HDL: 52 mg/dL | Triglicéridos: 118 mg/dL.',
+    referenceRange: 'Colesterol total < 200 mg/dL | LDL < 100 mg/dL | TG < 150 mg/dL',
+    interpretation: 'Perfil lipídico sérico dentro de metas metabólicas normales.',
     isAbnormal: false,
   },
   {
-    id: 'hosp-gasometria',
+    id: 'hosp-hba1c',
     category: 'Laboratorio',
-    subcategory: 'Gases',
-    name: 'Gasometría arterial (GSA) y lactato sérico',
-    result: 'pH: 7.40 | PaCO₂: 39 mmHg | PaO₂: 92 mmHg | HCO₃⁻: 24.0 mEq/L | Exceso de base: 0.0 mEq/L | SaO₂: 97% | Lactato: 1.1 mmol/L.',
-    referenceRange: 'pH: 7.35-7.45 | PaCO₂: 35-45 mmHg | PaO₂: 80-100 mmHg | HCO₃⁻: 22-26 mEq/L | Lactato: <2.0 mmol/L',
-    interpretation: 'Equilibrio ácido-base, oxigenación arterial y perfusión tisular dentro de la normalidad.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-perfil-hepatico',
-    category: 'Laboratorio',
-    subcategory: 'Función Hepática',
-    name: 'Perfil hepático completo y bilirrubinas (TGO, TGP, FA, BT/BD, Albúmina)',
-    result: 'AST (TGO): 24 U/L | ALT (TGP): 26 U/L | Fosfatasa Alcalina: 78 U/L | Bilirrubina Total: 0.7 mg/dL (Directa: 0.2 mg/dL, Indirecta: 0.5 mg/dL) | Albúmina sérica: 4.1 g/dL.',
-    referenceRange: 'AST/ALT: <40 U/L | FA: 40-130 U/L | Bilirrubina Total: 0.2-1.2 mg/dL | Albúmina: 3.5-5.0 g/dL',
-    interpretation: 'Sin evidencia de citólisis hepática, colestasis ni hipoalbuminemia.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-pcr-vsg',
-    category: 'Laboratorio',
-    subcategory: 'Inflamación e Infección',
-    name: 'Reactantes de fase aguda (Proteína C Reactiva cuantitativa y VSG)',
-    result: 'Proteína C Reactiva (PCR): 3.2 mg/L | Velocidad de Sedimentación Globular (VSG): 10 mm/h.',
-    referenceRange: 'PCR: <5.0 mg/L | VSG: <20 mm/h',
-    interpretation: 'Sin respuesta inflamatoria sistémica aguda significativa en reactantes.',
+    subcategory: 'Bioquímica',
+    name: 'Hemoglobina Glucosilada (HbA1c)',
+    result: 'HbA1c: 5.3%.',
+    referenceRange: '< 5.7%',
+    interpretation: 'Control glucémico trimestral dentro de parámetros normoglucémicos.',
     isAbnormal: false,
   },
   {
@@ -100,6 +163,56 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
+    id: 'hosp-acido-urico',
+    category: 'Laboratorio',
+    subcategory: 'Bioquímica',
+    name: 'Ácido úrico sérico',
+    result: 'Ácido úrico sérico: 5.1 mg/dL.',
+    referenceRange: '3.5 - 7.2 mg/dL',
+    interpretation: 'Concentración sérica de urato dentro de límites normales.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-amilasa',
+    category: 'Laboratorio',
+    subcategory: 'Bioquímica',
+    name: 'Amilasa sérica',
+    result: 'Amilasa sérica: 55 U/L.',
+    referenceRange: '28 - 100 U/L',
+    interpretation: 'Amilasa sérica dentro de límites fisiológicos.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-amylase-lipase',
+    category: 'Laboratorio',
+    subcategory: 'Bioquímica',
+    name: 'Lipasa sérica',
+    result: 'Lipasa sérica: 34 U/L.',
+    referenceRange: '13 - 60 U/L',
+    interpretation: 'Lipasa sérica dentro de parámetros normales sin indicios de pancreatitis aguda.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-ldh',
+    category: 'Laboratorio',
+    subcategory: 'Bioquímica',
+    name: 'Lactato deshidrogenasa (LDH)',
+    result: 'LDH sérica: 178 U/L.',
+    referenceRange: '120 - 246 U/L',
+    interpretation: 'Sin elevación indicativa de hemólisis intravascular o recambio celular acelerado.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-cpk',
+    category: 'Laboratorio',
+    subcategory: 'Bioquímica',
+    name: 'Creatina fosfoquinasa (CPK total)',
+    result: 'CPK total: 108 U/L.',
+    referenceRange: '30 - 200 U/L',
+    interpretation: 'Sin elevación indicativa de rabdomiólisis o lesión muscular esquelética.',
+    isAbnormal: false,
+  },
+  {
     id: 'hosp-bhcg',
     category: 'Laboratorio',
     subcategory: 'Bioquímica',
@@ -110,35 +223,217 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
-    id: 'hosp-urinalysis-ego',
+    id: 'hosp-cortisol',
     category: 'Laboratorio',
-    subcategory: 'Urinario',
-    name: 'Examen general de orina (EGO) con sedimento urinario',
-    result: 'Color: Amarillo paja | Aspecto: Transparente | Densidad: 1.018 | pH: 6.0 | Proteínas: Negativo | Glucosa: Negativo | Cetonas: Negativo | Hemoglobina/Sangre: Negativo | Leucocitos: 1-2 por campo | Eritrocitos: 0-1 por campo | Bacterias: Escasas / No significativas | Nitritos: Negativo.',
-    referenceRange: 'Sedimento limpio, proteinuria negativa, glucosuria negativa',
-    interpretation: 'Urianálisis dentro de la normalidad sin sedimento activo ni signos de infección urinaria.',
+    subcategory: 'Bioquímica',
+    name: 'Cortisol sérico basal',
+    result: 'Cortisol sérico matutino (08:00 h): 13.4 mcg/dL.',
+    referenceRange: '6.0 - 23.0 mcg/dL',
+    interpretation: 'Cortisol basal matutino dentro de parámetros fisiológicos.',
     isAbnormal: false,
   },
   {
-    id: 'hosp-urocultivo',
+    id: 'hosp-prolactina',
     category: 'Laboratorio',
-    subcategory: 'Microbiología / Serología',
-    name: 'Urocultivo con recuento de colonias y antibiograma',
-    result: 'Sin desarrollo bacteriano (< 1,000 UFC/mL a las 48 horas de incubación).',
-    referenceRange: 'Negativo (< 10,000 UFC/mL)',
-    interpretation: 'Descarta infección del tracto urinario bacteriana.',
+    subcategory: 'Bioquímica',
+    name: 'Prolactina sérica',
+    result: 'Prolactina sérica: 11.8 ng/mL.',
+    referenceRange: '4.8 - 23.3 ng/mL',
+    interpretation: 'Niveles basales de prolactina dentro de rango normal.',
     isAbnormal: false,
   },
   {
-    id: 'hosp-coagulation',
+    id: 'hosp-pth',
     category: 'Laboratorio',
-    subcategory: 'Hematología',
-    name: 'Tiempos de coagulación (TP, TTPa, INR)',
-    result: 'Tiempo de Protrombina (TP): 12.3 seg (Control: 12.0) | TTPa: 29.5 seg (Control: 30.0) | INR: 1.02 | Fibrinógeno: 320 mg/dL.',
-    referenceRange: 'TP: 11-13.5 seg, TTPa: 25-35 seg, INR: 0.9-1.15',
-    interpretation: 'Cascada de coagulación extrínseca e intrínseca conservadas.',
+    subcategory: 'Bioquímica',
+    name: 'Hormona Paratiroidea (PTH intacta)',
+    result: 'PTH intacta: 34 pg/mL.',
+    referenceRange: '15 - 65 pg/mL',
+    interpretation: 'Secreción paratiroidea basal normal.',
     isAbnormal: false,
   },
+
+  // ================= ELECTROLITOS =================
+  {
+    id: 'hosp-electrolitos',
+    category: 'Laboratorio',
+    subcategory: 'Electrolitos',
+    name: 'Electrolitos séricos (Na⁺, K⁺, Cl⁻, Ca²⁺, Mg²⁺)',
+    result: 'Sodio (Na⁺): 139 mEq/L | Potasio (K⁺): 4.1 mEq/L | Cloro (Cl⁻): 102 mEq/L | Calcio total: 9.3 mg/dL | Magnesio: 2.0 mg/dL.',
+    referenceRange: 'Na⁺: 135-145 mEq/L | K⁺: 3.5-5.1 mEq/L | Cl⁻: 98-107 mEq/L | Ca²⁺: 8.5-10.5 mg/dL',
+    interpretation: 'Equilibrio hidroelectrolítico sérico dentro de parámetros fisiológicos.',
+    isAbnormal: false,
+  },
+
+  // ================= FUNCIÓN HEPÁTICA =================
+  {
+    id: 'hosp-perfil-hepatico',
+    category: 'Laboratorio',
+    subcategory: 'Función Hepática',
+    name: 'Perfil hepático completo y bilirrubinas (TGO, TGP, FA, BT/BD, Albúmina)',
+    result: 'AST (TGO): 24 U/L | ALT (TGP): 26 U/L | Fosfatasa Alcalina: 78 U/L | Bilirrubina Total: 0.7 mg/dL (Directa: 0.2 mg/dL, Indirecta: 0.5 mg/dL) | Albúmina sérica: 4.1 g/dL.',
+    referenceRange: 'AST/ALT: <40 U/L | FA: 40-130 U/L | Bilirrubina Total: 0.2-1.2 mg/dL | Albúmina: 3.5-5.0 g/dL',
+    interpretation: 'Sin evidencia de citólisis hepática, colestasis ni hipoalbuminemia.',
+    isAbnormal: false,
+  },
+
+  // ================= GASES =================
+  {
+    id: 'hosp-gasometria',
+    category: 'Laboratorio',
+    subcategory: 'Gases',
+    name: 'Gasometría arterial (GSA) y lactato sérico',
+    result: 'pH: 7.40 | PaCO₂: 39 mmHg | PaO₂: 92 mmHg | HCO₃⁻: 24.0 mEq/L | Exceso de base: 0.0 mEq/L | SaO₂: 97% | Lactato: 1.1 mmol/L.',
+    referenceRange: 'pH: 7.35-7.45 | PaCO₂: 35-45 mmHg | PaO₂: 80-100 mmHg | HCO₃⁻: 22-26 mEq/L | Lactato: <2.0 mmol/L',
+    interpretation: 'Equilibrio ácido-base, oxigenación arterial y perfusión tisular dentro de la normalidad.',
+    isAbnormal: false,
+  },
+
+  // ================= INFLAMACIÓN E INFECCIÓN =================
+  {
+    id: 'hosp-pcr-vsg',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Proteína C Reactiva (PCR) cuantitativa',
+    result: 'Proteína C Reactiva (PCR): 3.2 mg/L.',
+    referenceRange: '< 5.0 mg/L',
+    interpretation: 'Sin elevación significativa de proteína C reactiva.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-vsg',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Velocidad de Sedimentación Globular (VSG)',
+    result: 'Velocidad de Sedimentación Globular (VSG): 10 mm/h.',
+    referenceRange: '< 20 mm/h',
+    interpretation: 'Velocidad de sedimentación globular dentro de parámetros basales.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-procalcitonina',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Procalcitonina sérica',
+    result: 'Procalcitonina sérica: 0.08 ng/mL.',
+    referenceRange: '< 0.25 ng/mL',
+    interpretation: 'Sin elevación sugestiva de infección bacteriana sistémica invasiva.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-panel-autoinmune',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Anticuerpos Antinucleares (ANA)',
+    result: 'Anticuerpos Antinucleares (ANA por IFI HEp-2): Negativo (<1:40).',
+    referenceRange: 'Negativo (< 1:80)',
+    interpretation: 'Anticuerpos antinucleares negativos.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-factor-reumatoide',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Factor Reumatoide (FR)',
+    result: 'Factor Reumatoide (FR): <10 UI/mL.',
+    referenceRange: '< 14 UI/mL',
+    interpretation: 'Factor reumatoide en rango normal.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-anti-ccp',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Anticuerpos anti-péptido cíclico citrulinado (Anti-CCP)',
+    result: 'Anti-CCP: <5 U/mL.',
+    referenceRange: '< 20 U/mL',
+    interpretation: 'Negativo para anticuerpos anti-péptido cíclico citrulinado.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-complemento',
+    category: 'Laboratorio',
+    subcategory: 'Inflamación e Infección',
+    name: 'Complemento sérico (C3 y C4)',
+    result: 'Complemento C3: 118 mg/dL | Complemento C4: 26 mg/dL.',
+    referenceRange: 'C3: 90-180 mg/dL | C4: 10-40 mg/dL',
+    interpretation: 'Fracciones de complemento C3 y C4 normocomplementémicas.',
+    isAbnormal: false,
+  },
+
+  // ================= VITAMINAS Y NUTRICIÓN =================
+  {
+    id: 'hosp-vitamina-b12-folato',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Vitamina B12 sérica (Cobalamina)',
+    result: 'Vitamina B12 sérica: 465 pg/mL.',
+    referenceRange: '210 - 911 pg/mL',
+    interpretation: 'Reservas séricas de cobalamina dentro de rango fisiológico normal.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-acido-folico',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Ácido fólico (Folato) sérico',
+    result: 'Ácido fólico sérico: 11.4 ng/mL.',
+    referenceRange: '3.8 - 20.0 ng/mL',
+    interpretation: 'Concentración de folato sérico dentro de parámetros normales.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-homocisteina',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Homocisteína sérica total',
+    result: 'Homocisteína total: 8.6 µmol/L.',
+    referenceRange: '5 - 15 µmol/L',
+    interpretation: 'Homocisteína sérica dentro de rango fisiológico.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-vitamina-d',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Vitamina D (25-OH-Vitamina D total)',
+    result: '25-hidroxivitamina D total: 35.4 ng/mL.',
+    referenceRange: '30 - 100 ng/mL (suficiencia)',
+    interpretation: 'Niveles suficientes de vitamina D circulante.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-vitamina-b1-b6',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Vitamina B1 (Tiamina)',
+    result: 'Vitamina B1 (Tiamina difosfato en sangre total): 94 nmol/L.',
+    referenceRange: '70 - 180 nmol/L',
+    interpretation: 'Niveles adecuados de tiamina sin déficit carencial.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-vitamina-b6',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Vitamina B6 sérica (Piridoxal fosfato)',
+    result: 'Vitamina B6 (PLP): 16.2 mcg/L.',
+    referenceRange: '5 - 50 mcg/L',
+    interpretation: 'Niveles adecuados de piridoxal 5-fosfato.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-perfil-vitaminas-liposolubles',
+    category: 'Laboratorio',
+    subcategory: 'Vitaminas y Nutrición',
+    name: 'Prealbúmina sérica',
+    result: 'Prealbúmina sérica: 26 mg/dL.',
+    referenceRange: '20 - 40 mg/dL',
+    interpretation: 'Estado nutricional proteico visceral conservado.',
+    isAbnormal: false,
+  },
+
+  // ================= CARDIOVASCULAR =================
   {
     id: 'hosp-troponin-i',
     category: 'Laboratorio',
@@ -160,33 +455,137 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
-    id: 'hosp-dimer-d',
+    id: 'hosp-pro-bnp',
     category: 'Laboratorio',
-    subcategory: 'Hematología',
-    name: 'Dímero D cuantitativo',
-    result: 'Dímero D: 210 ng/mL FEU.',
-    referenceRange: '<500 ng/mL FEU',
-    interpretation: 'Valores basales normales. Alto valor predictivo negativo para trombosis activa o CID.',
+    subcategory: 'Cardiovascular',
+    name: 'Péptido Natriurético tipo B (NT-proBNP)',
+    result: 'NT-proBNP sérico: 68 pg/mL.',
+    referenceRange: '< 125 pg/mL (ambulatorio < 75 años) | < 300 pg/mL (descarte agudo)',
+    interpretation: 'Valores normales con muy alto valor predictivo negativo para insuficiencia cardíaca congestiva aguda o crónica descompensada.',
+    isAbnormal: false,
+  },
+
+  // ================= URINARIO =================
+  {
+    id: 'hosp-urinalysis-ego',
+    category: 'Laboratorio',
+    subcategory: 'Urinario',
+    name: 'Examen general de orina (EGO) con sedimento urinario',
+    result: 'Color: Amarillo paja | Aspecto: Transparente | Densidad: 1.018 | pH: 6.0 | Proteínas: Negativo | Glucosa: Negativo | Cetonas: Negativo | Hemoglobina/Sangre: Negativo | Leucocitos: 1-2 por campo | Eritrocitos: 0-1 por campo | Bacterias: Escasas / No significativas | Nitritos: Negativo.',
+    referenceRange: 'Sedimento limpio, proteinuria negativa, glucosuria negativa',
+    interpretation: 'Urianálisis dentro de la normalidad sin sedimento activo ni signos de infección urinaria.',
     isAbnormal: false,
   },
   {
-    id: 'hosp-amylase-lipase',
+    id: 'hosp-rac-orina',
     category: 'Laboratorio',
-    subcategory: 'Bioquímica',
-    name: 'Amilasa y Lipasa sérica',
-    result: 'Amilasa sérica: 55 U/L | Lipasa sérica: 34 U/L.',
-    referenceRange: 'Amilasa: 28-100 U/L, Lipasa: 13-60 U/L',
-    interpretation: 'Enzimas pancreáticas dentro de parámetros normales sin indicios de pancreatitis.',
+    subcategory: 'Urinario',
+    name: 'Cociente albúmina/creatinina en orina (CAC)',
+    result: 'Cociente Albúmina/Creatinina en orina al azar: 12 mg/g.',
+    referenceRange: '< 30 mg/g',
+    interpretation: 'Excreción urinaria de albúmina dentro de límites normales (A1).',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-toxicologico',
+    category: 'Laboratorio',
+    subcategory: 'Urinario',
+    name: 'Tamizaje toxicológico en orina',
+    result: 'Panel de drogas de abuso en orina negativo para benzodiacepinas, opioides, cocaína, anfetaminas, cannabinoides y antidepresivos tricíclicos.',
+    referenceRange: 'Negativo para drogas evaluadas',
+    interpretation: 'Tamizaje toxicológico urinario negativo.',
+    isAbnormal: false,
+  },
+
+  // ================= MICROBIOLOGÍA / SEROLOGÍA =================
+  {
+    id: 'hosp-urocultivo',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Urocultivo con recuento de colonias y antibiograma',
+    result: 'Sin desarrollo bacteriano (< 1,000 UFC/mL a las 48 horas de incubación).',
+    referenceRange: 'Negativo (< 10,000 UFC/mL)',
+    interpretation: 'Descarta infección del tracto urinario bacteriana.',
     isAbnormal: false,
   },
   {
     id: 'hosp-blood-cultures',
     category: 'Laboratorio',
     subcategory: 'Microbiología / Serología',
-    name: 'Hemocultivos seriados pareados (2 tomas aerobio/anaerobio)',
+    name: 'Hemocultivos seriados pareados',
     result: 'Frascos 1 y 2 incubados a 37°C: Sin desarrollo bacteriano ni fúngico a las 24 y 48 horas de incubación.',
     referenceRange: 'Negativo / Sin crecimiento bacteriano',
     interpretation: 'Cultivo de sangre periférica negativo preliminar.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-coprologico',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Estudio coproparasitoscópico seriado',
+    result: 'Coproparasitoscópico seriado (3 muestras): Negativo para quistes, trofozoítos o huevos de helmintos.',
+    referenceRange: 'Negativo para parásitos intestinales',
+    interpretation: 'Sin evidencia parasitológica en muestras seriadas de heces.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-soh',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Sangre oculta en heces (SOH)',
+    result: 'Sangre oculta en heces (inmunológica): Negativa.',
+    referenceRange: 'Negativo',
+    interpretation: 'Sin evidencia de sangrado oculto gastrointestinal.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-coprocultivo',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Coprocultivo',
+    result: 'Coprocultivo: Flora entérica habitual sin aislamiento de Salmonella, Shigella ni Campylobacter.',
+    referenceRange: 'Sin aislamiento de enteropatógenos',
+    interpretation: 'Cultivo bacteriano fecal sin enteropatógenos invasivos.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-strep',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Prueba rápida de antígeno estreptocócico faríngeo',
+    result: 'Detección rápida de antígeno de Streptococcus pyogenes (grupo A): Negativo.',
+    referenceRange: 'Negativo',
+    interpretation: 'Sin evidencia rápida de faringitis estreptocócica del grupo A.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-hpylori',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Antígeno de Helicobacter pylori en heces',
+    result: 'Antígeno monoclonal de H. pylori en heces: Negativo.',
+    referenceRange: 'Negativo',
+    interpretation: 'Sin evidencia de infección activa por Helicobacter pylori.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-vih',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Prueba de VIH (ELISA 4ª generación)',
+    result: 'ELISA 4ª generación (Antígeno p24 y anticuerpos anti-VIH 1/2): No reactivo.',
+    referenceRange: 'No reactivo / Negativo',
+    interpretation: 'Sin evidencia serológica de infección por VIH.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-hepatitis-viral',
+    category: 'Laboratorio',
+    subcategory: 'Microbiología / Serología',
+    name: 'Panel viral de hepatitis aguda (VHA, VHB, VHC)',
+    result: 'IgM anti-VHA: Negativo | HBsAg: No reactivo | IgM anti-HBc: Negativo | Anti-VHC: No reactivo.',
+    referenceRange: 'No reactivo',
+    interpretation: 'Sin evidencia serológica de hepatitis viral aguda A, B o C.',
     isAbnormal: false,
   },
   {
@@ -203,7 +602,7 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     id: 'hosp-malaria-smear',
     category: 'Laboratorio',
     subcategory: 'Microbiología / Serología',
-    name: 'Gota Gruesa y Frotis de Sangre Periférica para Hemoparásitos (Malaria)',
+    name: 'Gota gruesa y frotis para hemoparásitos (Malaria)',
     result: 'Frotis y gota gruesa examinados al microscopio: NEGATIVO para hemoparásitos. No se observan trofozoítos, esquizontes ni gametocitos de Plasmodium (P. falciparum, P. vivax).',
     referenceRange: 'Negativo (Ausencia de parásitos)',
     interpretation: 'Descarte de paludismo / malaria activa.',
@@ -229,6 +628,8 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     interpretation: 'Líquido cefalorraquídeo normal sin inflamación meníngea.',
     isAbnormal: false,
   },
+
+  // ================= RADIOLOGÍA =================
   {
     id: 'hosp-rx-torax',
     category: 'Imagen',
@@ -250,6 +651,18 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
+    id: 'hosp-rx-osea',
+    category: 'Imagen',
+    subcategory: 'Radiología',
+    name: 'Radiografía Osteoarticular / Columna (Proyecciones AP y Lateral de región sintomática)',
+    result: 'Alineación ósea conservada sin trazos de fractura aguda, luxación ni lesiones líticas o blásticas. Densidad mineral ósea acorde a la edad, espacios articulares e intervertebrales preservados sin colapso ni osteofitos compresivos graves. Tejidos blandos perilesionales sin aumento significativo de volumen ni gas.',
+    referenceRange: 'Continuidad cortical y alineación osteoarticular conservadas sin fractura',
+    interpretation: 'Estudio radiográfico óseo sin fractura aguda, luxación ni lesión destructiva.',
+    isAbnormal: false,
+  },
+
+  // ================= ECOGRAFÍA =================
+  {
     id: 'hosp-us-abdomen',
     category: 'Imagen',
     subcategory: 'Ecografía',
@@ -257,6 +670,58 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     result: 'Hígado de tamaño y ecotextura homogénea normal. Vesícula biliar de paredes delgadas (<3 mm) sin litiasis ni signos inflamatorios. Vía biliar intra y extrahepática de calibre normal. Bazo y páncreas sin alteraciones. Riñones simétricos con adecuada relación córtico-medular, sin hidronefrosis. Vejiga urinaria homogénea. No se observa líquido libre en espacio de Morrison, esplenorrenal ni fondo de saco.',
     referenceRange: 'Eco abdominal completo sin hallazgos patológicos',
     interpretation: 'Ecografía abdominal dentro de parámetros normales sin colecciones ni líquido libre.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-us-renal',
+    category: 'Imagen',
+    subcategory: 'Ecografía',
+    name: 'Ultrasonido renal y vesical',
+    result: 'Riñones de tamaño y ecogenicidad cortical conservados, con adecuada diferenciación córtico-medular bilateral, sin hidronefrosis ni litiasis obstructiva. Vejiga urinaria de pared delgada y contenido homogéneo.',
+    referenceRange: 'Parénquima renal normal sin dilatación pielocalicial',
+    interpretation: 'Ecografía renal y vesical normal sin signos obstructivos.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-us-pelvico',
+    category: 'Imagen',
+    subcategory: 'Ecografía',
+    name: 'Ultrasonido pélvico / transvaginal',
+    result: 'Útero de dimensiones y miometrio homogéneo normal, endometrio lineal acorde a fase, ambos ovarios de morfología y volumen conservados sin masas anexiales ni líquido libre en fondo de saco.',
+    referenceRange: 'Útero y anexos sin alteraciones estructurales',
+    interpretation: 'Ecografía pélvica dentro de parámetros normales.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-doppler-venoso',
+    category: 'Imagen',
+    subcategory: 'Ecografía',
+    name: 'Ultrasonido Doppler venoso de extremidades',
+    result: 'Sistema venoso profundo femoral, poplíteo y tibial permeable, completamente compresible y con flujo fásico respiratorio conservado; sin signos de trombosis venosa profunda ni insuficiencia valvular significativa.',
+    referenceRange: 'Permeabilidad y compresibilidad venosa normal al Doppler',
+    interpretation: 'Estudio Doppler venoso negativo para trombosis venosa profunda.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-ecocardiograma',
+    category: 'Imagen',
+    subcategory: 'Ecografía',
+    name: 'Ecocardiograma Transtorácico (ECOTT) con Doppler Color',
+    result: 'Ventrículo izquierdo de diámetros y espesores parietales normales, motilidad segmentaria y global conservada con Fracción de Eyección (FEVI) de 62% (Simpson). Cavidades derechas de tamaño normal (TAPSE 22 mm, PSAP estimada 24 mmHg). Válvulas cardíacas normofuncionantes sin estenosis, insuficiencias significativas ni vegetaciones. Pericardio libre sin derrame.',
+    referenceRange: 'FEVI ≥ 55%, cavidades y válvulas normofuncionantes sin derrame pericárdico',
+    interpretation: 'Función sistodiastólica biventricular conservada sin valvulopatía aguda, hipertensión pulmonar ni derrame pericárdico.',
+    isAbnormal: false,
+  },
+
+  // ================= TOMOGRAFÍA / RMN =================
+  {
+    id: 'hosp-tac-cranio',
+    category: 'Imagen',
+    subcategory: 'Tomografía',
+    name: 'Tomografía axial computarizada (TAC) simple de cráneo',
+    result: 'Parénquima encefálico supratentorial e infratentorial con adecuada diferenciación de sustancia blanca y gris. Sin evidencia de hemorragias intra ni extraaxiales. Sin signos de isquemia territorial aguda reciente. Sistema ventricular de morfología y tamaño conservados, sin hidrocefalia. Cisternas basales permeables y simétricas. Sin desplazamiento de la línea media.',
+    referenceRange: 'TAC simple de cráneo sin lesiones agudas',
+    interpretation: 'Estudio de neuroimagen normal sin lesiones ocupantes de espacio ni hipertensión endocraneana evidente.',
     isAbnormal: false,
   },
   {
@@ -280,16 +745,6 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
-    id: 'hosp-tac-cranio',
-    category: 'Imagen',
-    subcategory: 'Tomografía',
-    name: 'Tomografía axial computarizada (TAC) simple de cráneo',
-    result: 'Parénquima encefálico supratentorial e infratentorial con adecuada diferenciación de sustancia blanca y gris. Sin evidencia de hemorragias intra ni extraaxiales. Sin signos de isquemia territorial aguda reciente. Sistema ventricular de morfología y tamaño conservados, sin hidrocefalia. Cisternas basales permeables y simétricas. Sin desplazamiento de la línea media.',
-    referenceRange: 'TAC simple de cráneo sin lesiones agudas',
-    interpretation: 'Estudio de neuroimagen normal sin lesiones ocupantes de espacio ni hipertensión endocraneana evidente.',
-    isAbnormal: false,
-  },
-  {
     id: 'hosp-rmn-craneo',
     category: 'Imagen',
     subcategory: 'Tomografía',
@@ -299,6 +754,8 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     interpretation: 'Neuroimagen de alta resolución normal.',
     isAbnormal: false,
   },
+
+  // ================= ELECTROCARDIOGRAMA / HOLTER / MAPA =================
   {
     id: 'hosp-ecg-12d',
     category: 'Gabinete y Trazados',
@@ -310,43 +767,35 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
-    id: 'hosp-vitamina-b12-folato',
-    category: 'Laboratorio',
-    subcategory: 'Vitaminas y Nutrición',
-    name: 'Niveles séricos de Vitamina B12 (Cobalamina), Ácido Fólico (B9) y Homocisteína',
-    result: 'Vitamina B12 sérica: 465 pg/mL | Ácido fólico (Folato) sérico: 11.4 ng/mL | Homocisteína total: 8.6 µmol/L.',
-    referenceRange: 'Vitamina B12: 210-911 pg/mL | Ácido fólico: 3.8-20.0 ng/mL | Homocisteína: 5-15 µmol/L',
-    interpretation: 'Reservas séricas de cobalamina y folato dentro de rangos fisiológicos normales.',
+    id: 'hosp-holter-24h',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Electrocardiograma',
+    name: 'Monitoreo Electrocardiográfico Ambulatorio Holter de 24 Horas',
+    result: 'Ritmo sinusal predominante durante todo el registro (FC mínima 54 lpm en sueño, media 74 lpm, máxima 118 lpm en actividad). Extrasístoles supraventriculares aisladas (<0.1%), sin episodios de fibrilación auricular, taquicardia supraventricular ni ventricular sostenida, pausas >2.0 seg ni bloqueos AV avanzados. Sin cambios dinámicos isquémicos del segmento ST.',
+    referenceRange: 'Ritmo sinusal continuo sin pausas >2.0 s ni taquiarritmias paroxísticas',
+    interpretation: 'Monitoreo Holter de 24 h sin arritmias paroxísticas clínicamente significativas ni bloqueos intermitentes.',
     isAbnormal: false,
   },
   {
-    id: 'hosp-vitamina-d',
-    category: 'Laboratorio',
-    subcategory: 'Vitaminas y Nutrición',
-    name: 'Vitamina D (25-OH-Vitamina D total) y Hormona Paratiroidea (PTH intacta)',
-    result: '25-hidroxivitamina D total: 35.4 ng/mL | PTH intacta: 34 pg/mL | Fósforo sérico: 3.6 mg/dL.',
-    referenceRange: '25-OH-Vitamina D: 30-100 ng/mL (suficiencia) | PTH intacta: 15-65 pg/mL',
-    interpretation: 'Estatus suficiente de vitamina D y homeostasis calcio-paratiroidea normal.',
+    id: 'hosp-holter-presion-mapa',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Electrocardiograma',
+    name: 'Holter de Presión Arterial / MAPA de 24 Horas (Monitoreo Ambulatorio de PA)',
+    result: 'Promedio global 24 horas: 118/74 mmHg (FC media 74 lpm). Periodo diurno (07:00–22:00): 122/77 mmHg | Periodo nocturno (22:00–07:00): 106/65 mmHg. Descenso nocturno fisiológico (patrón dipper): 13.1% sistólico y 15.5% diastólico. Carga hipertensiva <15% sin picos hipertensivos ni hipotensión sintomática.',
+    referenceRange: 'Prom. 24h < 130/80 mmHg | Diurno < 135/85 mmHg | Nocturno < 120/70 mmHg | Descenso nocturno dipper: 10–20%',
+    interpretation: 'Perfil ambulatorio de presión arterial normotenso de 24 horas con ritmo circadiano dipper fisiológico conservado.',
     isAbnormal: false,
   },
+
+  // ================= ELECTROMIOGRAFÍA Y NEUROFISIOLOGÍA =================
   {
-    id: 'hosp-vitamina-b1-b6',
-    category: 'Laboratorio',
-    subcategory: 'Vitaminas y Nutrición',
-    name: 'Vitaminas Neurotrópicas B1 (Tiamina) y B6 (Piridoxal 5\'-fosfato)',
-    result: 'Vitamina B1 (Tiamina difosfato en sangre total): 94 nmol/L | Vitamina B6 (PLP): 16.2 mcg/L.',
-    referenceRange: 'Tiamina (B1): 70-180 nmol/L | Vitamina B6 (PLP): 5-50 mcg/L',
-    interpretation: 'Niveles adecuados de vitaminas neurotrópicas del complejo B sin deficiencia carencial.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-perfil-vitaminas-liposolubles',
-    category: 'Laboratorio',
-    subcategory: 'Vitaminas y Nutrición',
-    name: 'Perfil Nutricional y Vitaminas A, C, E y Zinc sérico',
-    result: 'Vitamina A (Retinol): 48 mcg/dL | Vitamina E (Alfa-tocoferol): 11.2 mg/L | Vitamina C (Ácido ascórbico): 0.9 mg/dL | Prealbúmina: 26 mg/dL | Zinc sérico: 88 mcg/dL.',
-    referenceRange: 'Vit A: 30-80 mcg/dL | Vit E: 5.5-17 mg/L | Vit C: 0.4-2.0 mg/dL | Prealbúmina: 20-40 mg/dL',
-    interpretation: 'Estado nutricional proteico-vitamínico conservado sin datos de malabsorción.',
+    id: 'hosp-eeg',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Electromiografía y Neurofisiología',
+    name: 'Electroencefalograma (EEG) Convencional con Activación (Hiperventilación y Fotoestimulación)',
+    result: 'Actividad de base posterior constituida por ritmo alfa dominante a 9.5–10.5 Hz, simétrico, bien modulado y reactivo a la apertura ocular. Regiones anteriores con ritmo beta de bajo voltaje. Durante hiperventilación y fotoestimulación intermitente no se registran complejos punta-onda, polipuntas, brotes paroxísticos epileptiformes ni asimetrías o enlentecimiento focal delta/theta.',
+    referenceRange: 'Ritmo alfa posterior reactivo (8–13 Hz), sin actividad epileptiforme ni enlentecimiento focal',
+    interpretation: 'Electroencefalograma dentro de parámetros fisiológicos normales para la edad; descarta actividad epileptiforme interictal o encefalopatía difusa.',
     isAbnormal: false,
   },
   {
@@ -380,6 +829,40 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     isAbnormal: false,
   },
   {
+    id: 'hosp-potenciales-evocados',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Electromiografía y Neurofisiología',
+    name: 'Potenciales Evocados Multimodales (Visuales PEV, Auditivos de Tronco PEATC y Somatosensoriales PESS)',
+    result: 'PEV (patrón damero): onda P100 bilateral simétrica con latencias normales (101 ms OI, 102 ms OD). PEATC: ondas I, III y V presentes con intervalos interpico I-III, III-V y I-V conservados. PESS (nervio mediano y tibial posterior): latencias corticales N20 y P37 dentro de rangos normativos.',
+    referenceRange: 'P100 < 115 ms, diferencias interoculares < 6 ms; conducción troncoencefálica y cordonal posterior normal',
+    interpretation: 'Integridad funcional de vías visuales, auditivas de tronco encefálico y somatosensoriales centrales.',
+    isAbnormal: false,
+  },
+
+  // ================= FUNCIÓN PULMONAR Y AUDIOLOGÍA =================
+  {
+    id: 'hosp-espirometria',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Función Pulmonar y Audiología',
+    name: 'Espirometría Basal y Prueba con Broncodilatador (FVC, FEV₁, Relación FEV₁/FVC)',
+    result: 'Basal: FVC 96% del predicho | FEV₁ 94% del predicho | Relación FEV₁/FVC: 0.81 | FEF25-75%: 89%. Post-broncodilatador (400 mcg salbutamol): cambio en FEV₁ de +4% (+95 mL). Curva flujo-volumen de morfología normal sin amputación inspiratoria ni espiratoria.',
+    referenceRange: 'FEV₁/FVC ≥ 0.70 (y > LIN), FVC y FEV₁ ≥ 80% del predicho; respuesta BD negativa (<12% y <200 mL)',
+    interpretation: 'Mecánica ventilatoria y flujos espiratorios normales; descarta obstrucción crónica fija o hiperreactividad bronquial reversible.',
+    isAbnormal: false,
+  },
+  {
+    id: 'hosp-audiometria',
+    category: 'Gabinete y Trazados',
+    subcategory: 'Función Pulmonar y Audiología',
+    name: 'Audiometría Tonal Liminar y Timpanometría (Impedanciometría)',
+    result: 'Audiometría tonal: umbrales auditivos aéreos y óseos entre 10 y 20 dB HL en todas las frecuencias (250–8000 Hz) bilateralmente, sin brecha aéreo-ósea. Logoaudiometría: 100% de discriminación fonémica. Timpanometría: curvas tipo A bilaterales con reflejos estapediales presentes.',
+    referenceRange: 'Umbrales ≤ 25 dB HL bilateral; curva timpanométrica tipo A',
+    interpretation: 'Audición periférica bilateral y función de oído medio dentro de parámetros normales.',
+    isAbnormal: false,
+  },
+
+  // ================= ENDOSCOPIA Y BRONCOSCOPIA =================
+  {
     id: 'hosp-endoscopia-alta',
     category: 'Gabinete y Trazados',
     subcategory: 'Endoscopia y Broncoscopia',
@@ -409,146 +892,6 @@ export const STANDARD_HOSPITAL_STUDIES: ComplementaryStudy[] = [
     interpretation: 'Fibrobroncoscopia normal; descarta lesión endobronquial, cuerpo extraño, hemorragia alveolar u obstrucción bronquial.',
     isAbnormal: false,
   },
-  {
-    id: 'hosp-eeg',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Electromiografía y Neurofisiología',
-    name: 'Electroencefalograma (EEG) Convencional con Activación (Hiperventilación y Fotoestimulación)',
-    result: 'Actividad de base posterior constituida por ritmo alfa dominante a 9.5–10.5 Hz, simétrico, bien modulado y reactivo a la apertura ocular. Regiones anteriores con ritmo beta de bajo voltaje. Durante hiperventilación y fotoestimulación intermitente no se registran complejos punta-onda, polipuntas, brotes paroxísticos epileptiformes ni asimetrías o enlentecimiento focal delta/theta.',
-    referenceRange: 'Ritmo alfa posterior reactivo (8–13 Hz), sin actividad epileptiforme ni enlentecimiento focal',
-    interpretation: 'Electroencefalograma dentro de parámetros fisiológicos normales para la edad; descarta actividad epileptiforme interictal o encefalopatía difusa.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-potenciales-evocados',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Electromiografía y Neurofisiología',
-    name: 'Potenciales Evocados Multimodales (Visuales PEV, Auditivos de Tronco PEATC y Somatosensoriales PESS)',
-    result: 'PEV (patrón damero): onda P100 bilateral simétrica con latencias normales (101 ms OI, 102 ms OD). PEATC: ondas I, III y V presentes con intervalos interpico I-III, III-V y I-V conservados. PESS (nervio mediano y tibial posterior): latencias corticales N20 y P37 dentro de rangos normativos.',
-    referenceRange: 'P100 < 115 ms, diferencias interoculares < 6 ms; conducción troncoencefálica y cordonal posterior normal',
-    interpretation: 'Integridad funcional de vías visuales, auditivas de tronco encefálico y somatosensoriales centrales.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-espirometria',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Función Pulmonar y Audiología',
-    name: 'Espirometría Basal y Prueba con Broncodilatador (FVC, FEV₁, Relación FEV₁/FVC)',
-    result: 'Basal: FVC 96% del predicho | FEV₁ 94% del predicho | Relación FEV₁/FVC: 0.81 | FEF25-75%: 89%. Post-broncodilatador (400 mcg salbutamol): cambio en FEV₁ de +4% (+95 mL). Curva flujo-volumen de morfología normal sin amputación inspiratoria ni espiratoria.',
-    referenceRange: 'FEV₁/FVC ≥ 0.70 (y > LIN), FVC y FEV₁ ≥ 80% del predicho; respuesta BD negativa (<12% y <200 mL)',
-    interpretation: 'Mecánica ventilatoria y flujos espiratorios normales; descarta obstrucción crónica fija o hiperreactividad bronquial reversible.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-audiometria',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Función Pulmonar y Audiología',
-    name: 'Audiometría Tonal Liminar y Timpanometría (Impedanciometría)',
-    result: 'Audiometría tonal: umbrales auditivos aéreos y óseos entre 10 y 20 dB HL en todas las frecuencias (250–8000 Hz) bilateralmente, sin brecha aéreo-ósea. Logoaudiometría: 100% de discriminación fonémica. Timpanometría: curvas tipo A bilaterales con reflejos estapediales presentes.',
-    referenceRange: 'Umbrales ≤ 25 dB HL bilateral; curva timpanométrica tipo A',
-    interpretation: 'Audición periférica bilateral y función de oído medio dentro de parámetros normales.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-holter-24h',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Electrocardiograma',
-    name: 'Monitoreo Electrocardiográfico Ambulatorio Holter de 24 Horas',
-    result: 'Ritmo sinusal predominante durante todo el registro (FC mínima 54 lpm en sueño, media 74 lpm, máxima 118 lpm en actividad). Extrasístoles supraventriculares aisladas (<0.1%), sin episodios de fibrilación auricular, taquicardia supraventricular ni ventricular sostenida, pausas >2.0 seg ni bloqueos AV avanzados. Sin cambios dinámicos isquémicos del segmento ST.',
-    referenceRange: 'Ritmo sinusal continuo sin pausas >2.0 s ni taquiarritmias paroxísticas',
-    interpretation: 'Monitoreo Holter de 24 h sin arritmias paroxísticas clínicamente significativas ni bloqueos intermitentes.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-holter-presion-mapa',
-    category: 'Gabinete y Trazados',
-    subcategory: 'Electrocardiograma',
-    name: 'Holter de Presión Arterial / MAPA de 24 Horas (Monitoreo Ambulatorio de PA)',
-    result: 'Promedio global 24 horas: 118/74 mmHg (FC media 74 lpm). Periodo diurno (07:00–22:00): 122/77 mmHg | Periodo nocturno (22:00–07:00): 106/65 mmHg. Descenso nocturno fisiológico (patrón dipper): 13.1% sistólico y 15.5% diastólico. Carga hipertensiva <15% sin picos hipertensivos ni hipotensión sintomática.',
-    referenceRange: 'Prom. 24h < 130/80 mmHg | Diurno < 135/85 mmHg | Nocturno < 120/70 mmHg | Descenso nocturno dipper: 10–20%',
-    interpretation: 'Perfil ambulatorio de presión arterial normotenso de 24 horas con ritmo circadiano dipper fisiológico conservado.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-ecocardiograma',
-    category: 'Imagen',
-    subcategory: 'Ecografía',
-    name: 'Ecocardiograma Transtorácico (ECOTT) con Doppler Color',
-    result: 'Ventrículo izquierdo de diámetros y espesores parietales normales, motilidad segmentaria y global conservada con Fracción de Eyección (FEVI) de 62% (Simpson). Cavidades derechas de tamaño normal (TAPSE 22 mm, PSAP estimada 24 mmHg). Válvulas cardíacas normofuncionantes sin estenosis, insuficiencias significativas ni vegetaciones. Pericardio libre sin derrame.',
-    referenceRange: 'FEVI ≥ 55%, cavidades y válvulas normofuncionantes sin derrame pericárdico',
-    interpretation: 'Función sistodiastólica biventricular conservada sin valvulopatía aguda, hipertensión pulmonar ni derrame pericárdico.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-rx-osea',
-    category: 'Imagen',
-    subcategory: 'Radiología',
-    name: 'Radiografía Osteoarticular / Columna (Proyecciones AP y Lateral de región sintomática)',
-    result: 'Alineación ósea conservada sin trazos de fractura aguda, luxación ni lesiones líticas o blásticas. Densidad mineral ósea acorde a la edad, espacios articulares e intervertebrales preservados sin colapso ni osteofitos compresivos graves. Tejidos blandos perilesionales sin aumento significativo de volumen ni gas.',
-    referenceRange: 'Continuidad cortical y alineación osteoarticular conservadas sin fractura',
-    interpretation: 'Estudio radiográfico óseo sin fractura aguda, luxación ni lesión destructiva.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-pro-bnp',
-    category: 'Laboratorio',
-    subcategory: 'Cardiovascular',
-    name: 'Péptido Natriurético tipo B (NT-proBNP)',
-    result: 'NT-proBNP sérico: 68 pg/mL.',
-    referenceRange: '< 125 pg/mL (ambulatorio < 75 años) | < 300 pg/mL (descarte agudo)',
-    interpretation: 'Valores normales con muy alto valor predictivo negativo para insuficiencia cardíaca congestiva aguda o crónica descompensada.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-hba1c-lipidos',
-    category: 'Laboratorio',
-    subcategory: 'Bioquímica',
-    name: 'Hemoglobina Glucosilada (HbA1c) y Perfil Lipídico Completo (CT, LDL, HDL, Triglicéridos)',
-    result: 'HbA1c: 5.3% | Colesterol Total: 172 mg/dL | LDL calculado: 96 mg/dL | HDL: 52 mg/dL | Triglicéridos: 118 mg/dL.',
-    referenceRange: 'HbA1c < 5.7% | Colesterol total < 200 mg/dL | LDL < 100 mg/dL | TG < 150 mg/dL',
-    interpretation: 'Control glucémico trimestral y perfil lipídico dentro de metas cardiometabólicas saludables.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-perfil-ferrico',
-    category: 'Laboratorio',
-    subcategory: 'Hematología',
-    name: 'Perfil de Hierro Completo (Hierro Sérico, Ferritina, TIBC y Saturación de Transferrina)',
-    result: 'Hierro sérico: 98 mcg/dL | Ferritina sérica: 84 ng/mL | Capacidad total de fijación (TIBC): 310 mcg/dL | Saturación de transferrina: 31.6%.',
-    referenceRange: 'Ferritina: 30-300 ng/mL | Hierro sérico: 60-170 mcg/dL | Sat. transferrina: 20-50%',
-    interpretation: 'Reservas corporales de hierro y cinética férrica normales; descarta ferropenia.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-panel-autoinmune',
-    category: 'Laboratorio',
-    subcategory: 'Inflamación e Infección',
-    name: 'Panel Autoinmune (ANA, Factor Reumatoide, Anti-CCP y Complemento C3/C4)',
-    result: 'Anticuerpos Antinucleares (ANA por IFI HEp-2): Negativo (<1:40) | Factor Reumatoide (FR): <10 UI/mL | Anti-CCP: <5 U/mL | Complemento C3: 118 mg/dL | Complemento C4: 26 mg/dL.',
-    referenceRange: 'ANA negativo (<1:80), FR <14 UI/mL, C3 90-180 mg/dL, C4 10-40 mg/dL',
-    interpretation: 'Perfil serológico autoinmune negativo y complemento sérico normocomplementémico.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-toxicologico',
-    category: 'Laboratorio',
-    subcategory: 'Urinario',
-    name: 'Tamizaje Toxicológico en Orina y Niveles de Etanol / Fármacos',
-    result: 'Panel en orina negativo para benzodiacepinas, opioides, cocaína, anfetaminas, cannabinoides y antidepresivos tricíclicos. Etanol sérico: <10 mg/dL (No detectable). Niveles de salicilatos y paracetamol no detectables.',
-    referenceRange: 'Negativo para drogas de abuso y tóxicos medidos',
-    interpretation: 'Tamizaje toxicológico negativo; descarta intoxicación aguda por sustancias evaluadas.',
-    isAbnormal: false,
-  },
-  {
-    id: 'hosp-coprologico',
-    category: 'Laboratorio',
-    subcategory: 'Microbiología / Serología',
-    name: 'Estudio Coprológico, Coproparasitoscópico Seriado y Sangre Oculta en Heces',
-    result: 'Consistencia blanda-formada sin moco macroscópico ni sangre visible. Sangre oculta en heces (SOH inmunológica): Negativa. Citología fecal: leucocitos 0-1 por campo. Coproparasitoscópico seriado (3 muestras): Negativo para quistes, trofozoítos o huevos. Coprocultivo: flora entérica habitual sin enteropatógenos.',
-    referenceRange: 'Negativo para leucocitos fecales, sangre oculta, parásitos y enteropatógenos',
-    interpretation: 'Estudio coproparasitoscópico y microbiológico fecal normal sin sangrado oculto ni infección entérica invasiva.',
-    isAbnormal: false,
-  },
 ];
 
 /**
@@ -563,9 +906,14 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       isAbnormal: true,
     },
     'hosp-pcr-vsg': {
-      result: 'Proteína C Reactiva (PCR): 28 mg/L (elevación leve-moderada) | VSG: 14 mm/h (normal/baja por hemoconcentración).',
+      result: 'Proteína C Reactiva (PCR): 28 mg/L (elevación leve-moderada).',
       interpretation: 'Elevación discreta compatible con proceso viral agudo con compromiso endotelial (contrastando con PCR >100 mg/L típica de sepsis bacteriana).',
       isAbnormal: true,
+    },
+    'hosp-vsg': {
+      result: 'Velocidad de Sedimentación Globular (VSG): 14 mm/h (normal/baja por hemoconcentración).',
+      interpretation: 'VSG no elevada por hemoconcentración durante fase crítica viral.',
+      isAbnormal: false,
     },
     'hosp-tac-abdomen': {
       result: 'Hepatomegalia homogénea leve (lóbulo derecho 16.4 cm) con edema periportal. Engrosamiento laminar edematoso de la pared vesicular (5.5 mm) con aspecto en "capas de cebolla", sin cálculos ni dilatación biliar. Escasa a moderada cantidad de líquido libre laminar (ascitis) en espacio hepatorrenal de Morrison, correderas parietocólicas y fondo de saco pélvico. En los cortes basales torácicos incluidos se evidencia derrame pleural laminar derecho.',
@@ -661,9 +1009,14 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       interpretation: 'Elevación por disfunción ventricular aguda e incremento de presión telediastólica tras isquemia miocárdica extensa.',
       isAbnormal: true,
     },
-    'hosp-hba1c-lipidos': {
-      result: 'HbA1c: 6.3% (prediabetes) | Colesterol Total: 248 mg/dL | LDL: 168 mg/dL (ALTO) | HDL: 34 mg/dL (bajo) | Triglicéridos: 215 mg/dL.',
-      interpretation: 'Dislipidemia aterogénica severa e intolerancia glucémica como factores de riesgo coronario mayor.',
+    'hosp-hba1c': {
+      result: 'HbA1c: 6.3% (rango de prediabetes).',
+      interpretation: 'Intolerancia glucémica crónica asociada a riesgo cardiovascular.',
+      isAbnormal: true,
+    },
+    'hosp-perfil-lipidos': {
+      result: 'Colesterol Total: 248 mg/dL | LDL: 168 mg/dL (ALTO) | HDL: 34 mg/dL (bajo) | Triglicéridos: 215 mg/dL.',
+      interpretation: 'Dislipidemia aterogénica severa como factor de riesgo coronario mayor.',
       isAbnormal: true,
     },
   },
@@ -678,10 +1031,15 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       interpretation: 'Íleo adinámico metabólico (que explica el dolor abdominal agudo o "pseudoperitonitis") descartando abdomen quirúrgico verdadero como apendicitis o pancreatitis.',
       isAbnormal: true,
     },
-    'hosp-amylase-lipase': {
-      result: 'Amilasa sérica: 158 U/L (discretamente elevada) | Lipasa sérica: 38 U/L (normal).',
-      interpretation: 'Hiperamilasemia leve inespecífica frecuente en deshidratación y acidosis metabólica severa (aclaramiento renal reducido y origen salival/metabólico) con lipasa normal que descarta pancreatitis aguda.',
+    'hosp-amilasa': {
+      result: 'Amilasa sérica: 158 U/L (discretamente elevada).',
+      interpretation: 'Hiperamilasemia leve inespecífica frecuente en deshidratación y acidosis metabólica severa (aclaramiento renal reducido y origen salival/metabólico).',
       isAbnormal: true,
+    },
+    'hosp-amylase-lipase': {
+      result: 'Lipasa sérica: 38 U/L (normal).',
+      interpretation: 'Lipasa normal que descarta pancreatitis aguda verdadera.',
+      isAbnormal: false,
     },
     'hosp-rx-torax': {
       result: 'Campos pulmonares hiperventilados con volúmenes pulmonares amplios secundarios a taquipnea/polipnea compensatoria profunda, sin consolidaciones ni neumotórax.',
@@ -728,8 +1086,13 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
   },
   'case-neumonia-adquirida': {
     'hosp-pcr-vsg': {
-      result: 'Proteína C Reactiva (PCR): 194 mg/L (marcadamente elevada) | VSG: 68 mm/h.',
+      result: 'Proteína C Reactiva (PCR): 194 mg/L (marcadamente elevada).',
       interpretation: 'Elevación severa característica de infección bacteriana invasiva parenquimatosa.',
+      isAbnormal: true,
+    },
+    'hosp-vsg': {
+      result: 'Velocidad de Sedimentación Globular (VSG): 68 mm/h.',
+      interpretation: 'Elevación significativa concordante con respuesta inflamatoria aguda.',
       isAbnormal: true,
     },
     'hosp-electrolitos': {
@@ -758,8 +1121,13 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       isAbnormal: true,
     },
     'hosp-vitamina-d': {
-      result: '25-OH-Vitamina D total: 14.2 ng/mL (DEFICIENCIA) | PTH intacta: 74 pg/mL (elevación compensatoria leve).',
+      result: '25-OH-Vitamina D total: 14.2 ng/mL (DEFICIENCIA).',
       interpretation: 'Deficiencia de vitamina D concordante con edad avanzada y osteoporosis previa.',
+      isAbnormal: true,
+    },
+    'hosp-pth': {
+      result: 'PTH intacta: 74 pg/mL (elevación compensatoria leve).',
+      interpretation: 'Hiperparatiroidismo secundario leve por deficiencia de vitamina D.',
       isAbnormal: true,
     },
     'hosp-broncoscopia': {
@@ -834,8 +1202,13 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       isAbnormal: true,
     },
     'hosp-vitamina-d': {
-      result: '25-OH-Vitamina D total: 16.5 ng/mL | PTH intacta: 118 pg/mL | Fósforo: 5.4 mg/dL.',
-      interpretation: 'Insuficiencia de vitamina D e hiperparatiroidismo secundario por deterioro de función renal.',
+      result: '25-OH-Vitamina D total: 16.5 ng/mL (INSUFICIENCIA).',
+      interpretation: 'Insuficiencia de vitamina D por menor hidroxilación renal 1-alfa.',
+      isAbnormal: true,
+    },
+    'hosp-pth': {
+      result: 'PTH intacta: 118 pg/mL.',
+      interpretation: 'Hiperparatiroidismo secundario por deterioro de función renal.',
       isAbnormal: true,
     },
   },
@@ -1008,19 +1381,34 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       isAbnormal: true,
     },
     'hosp-vitamina-b12-folato': {
-      result: 'Vitamina B12: 410 pg/mL | Ácido fólico: 9.8 ng/mL | Homocisteína: 9.1 µmol/L.',
+      result: 'Vitamina B12 sérica: 410 pg/mL.',
       interpretation: 'Descarta mieloneuropatía carencial por déficit de vitamina B12 como diagnóstico diferencial de debilidad ascendente.',
+      isAbnormal: false,
+    },
+    'hosp-acido-folico': {
+      result: 'Ácido fólico sérico: 9.8 ng/mL.',
+      interpretation: 'Niveles de folato dentro de límites normales.',
       isAbnormal: false,
     },
   },
   'case-psiquiatria-delirium-tremens': {
     'hosp-vitamina-b1-b6': {
-      result: 'Vitamina B1 (Tiamina en sangre total): 34 nmol/L (CRÍTICAMENTE BAJA) | Vitamina B6 (PLP): 3.2 mcg/L (baja).',
+      result: 'Vitamina B1 (Tiamina en sangre total): 34 nmol/L (CRÍTICAMENTE BAJA).',
       interpretation: 'Deficiencia severa de tiamina (vitamina B1) secundaria a alcoholismo crónico; altísimo riesgo de encefalopatía de Wernicke si se administra glucosa sin reposición previa de tiamina IV.',
       isAbnormal: true,
     },
+    'hosp-vitamina-b6': {
+      result: 'Vitamina B6 (PLP): 3.2 mcg/L (BAJA).',
+      interpretation: 'Déficit nutricional de piridoxina asociado a consumo crónico de alcohol.',
+      isAbnormal: true,
+    },
     'hosp-vitamina-b12-folato': {
-      result: 'Ácido fólico (B9): 2.1 ng/mL (DEFICIENCIA) | Vitamina B12: 260 pg/mL (limítrofe baja) | Homocisteína: 21.4 µmol/L.',
+      result: 'Vitamina B12 sérica: 260 pg/mL (limítrofe baja).',
+      interpretation: 'Reserva limítrofe de cobalamina en contexto de etilismo crónico.',
+      isAbnormal: true,
+    },
+    'hosp-acido-folico': {
+      result: 'Ácido fólico (B9): 2.1 ng/mL (DEFICIENCIA).',
       interpretation: 'Deficiencia de folatos frecuente en etilismo crónico que explica tendencia a macrocitosis hematológica.',
       isAbnormal: true,
     },
@@ -1030,22 +1418,32 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
       isAbnormal: true,
     },
     'hosp-toxicologico': {
-      result: 'Etanol sérico: <10 mg/dL (negativo tras suspensión abrupta hace 48 h). Tamizaje urinario negativo para cocaína, opioides y anfetaminas.',
+      result: 'Tamizaje urinario negativo para cocaína, opioides y anfetaminas. Etanol en sangre: <10 mg/dL (tras suspensión abrupta hace 48 h).',
       interpretation: 'Confirma estado de abstinencia alcohólica tras cese de ingesta sin intoxicación concomitante por drogas ilícitas.',
       isAbnormal: false,
     },
   },
   'case-traumatologia-cadera': {
     'hosp-vitamina-d': {
-      result: '25-OH-Vitamina D total: 12.8 ng/mL (DEFICIENCIA) | PTH intacta: 81 pg/mL | Calcio sérico: 8.6 mg/dL.',
+      result: '25-OH-Vitamina D total: 12.8 ng/mL (DEFICIENCIA).',
       interpretation: 'Hipovitaminosis D severa asociada a fragilidad ósea y riesgo de fractura de cadera en adulto mayor.',
+      isAbnormal: true,
+    },
+    'hosp-pth': {
+      result: 'PTH intacta: 81 pg/mL.',
+      interpretation: 'Elevación compensatoria secundaria a déficit severo de vitamina D.',
       isAbnormal: true,
     },
   },
   'case-out-mi-anemia-ferropenica': {
     'hosp-vitamina-b12-folato': {
-      result: 'Vitamina B12 sérica: 390 pg/mL | Ácido fólico sérico: 10.2 ng/mL.',
-      interpretation: 'Niveles normales de B12 y folato; descarta anemia mixta carencial y confirma ferropenia pura.',
+      result: 'Vitamina B12 sérica: 390 pg/mL.',
+      interpretation: 'Niveles normales de vitamina B12; descarta anemia megaloblástica mixta.',
+      isAbnormal: false,
+    },
+    'hosp-acido-folico': {
+      result: 'Ácido fólico sérico: 10.2 ng/mL.',
+      interpretation: 'Niveles normales de folato; refuerza ferropenia pura.',
       isAbnormal: false,
     },
     'hosp-endoscopia-alta': {
@@ -1158,9 +1556,19 @@ const RELATED_STUDY_OVERRIDES: Record<string, Record<string, Partial<Complementa
   },
   'case-out-gastro-colitis-ulcerosa': {
     'hosp-coprologico': {
-      result: 'Heces mucosanguinolentas con abundantes leucocitos fecales (>20 por campo) y sangre oculta fuertemente positiva. Coprocultivo, toxina A/B de Clostridioides difficile y coproparasitoscópico seriados negativos.',
-      interpretation: 'Confirma diarrea inflamatoria no infecciosa congruente con brote de enfermedad inflamatoria intestinal.',
+      result: 'Coproparasitoscópico seriado (3 muestras): Negativo para quistes, trofozoítos o huevos.',
+      interpretation: 'Descarta parasitosis intestinal como causa de diarrea crónica.',
+      isAbnormal: false,
+    },
+    'hosp-soh': {
+      result: 'Sangre oculta en heces (SOH inmunológica): Fuertemente POSITIVA.',
+      interpretation: 'Confirma sangrado digestivo mucoso inflamatorio activo.',
       isAbnormal: true,
+    },
+    'hosp-coprocultivo': {
+      result: 'Coprocultivo y toxina A/B de Clostridioides difficile negativos.',
+      interpretation: 'Descarta infección enteroinvasiva bacteriana como etiología del brote inflamatorio.',
+      isAbnormal: false,
     },
   },
   'case-out-cardio-hta': {
@@ -1214,7 +1622,7 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
     (spec === 'nefrologia' && !isObstructiveUro) ||
     /lesion renal|insuficiencia renal|pielonefrit|enfermedad renal|hiperpotasemia|rabdomiolisis/.test(textPool);
 
-  // β-hCG en varones o mayores de 55 años
+  // β-hCG contextual en varones, mayores de 55 años o gestación/aborto/ectópico
   if (stdStudy.id === 'hosp-bhcg') {
     if (cCase.patientInfo.sex === 'Masculino') {
       return {
@@ -1222,6 +1630,16 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
         result: 'Estudio no aplicable en paciente de sexo masculino (β-hCG < 1.0 mUI/mL).',
         interpretation: 'No corresponde a paciente masculino.',
         isAbnormal: false,
+      };
+    }
+    if (/aborto|ectopic|preeclampsia|eclampsia|embaraz|gesta/.test(textPool)) {
+      return {
+        ...stdStudy,
+        result: /aborto/.test(textPool)
+          ? 'β-hCG cuantitativa sérica: 2,450 mUI/mL (POSITIVA, en meseta/descenso respecto a edad gestacional).'
+          : 'β-hCG cuantitativa sérica: POSITIVA (> 5,000 mUI/mL).',
+        interpretation: 'Confirma gonadotropina coriónica detectable coherente con gestación o pérdida gestacional reciente.',
+        isAbnormal: true,
       };
     }
     if (cCase.patientInfo.age >= 55) {
@@ -1232,6 +1650,19 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
         isAbnormal: false,
       };
     }
+  }
+
+  // Urocultivo contextual en infección urinaria o EGO con nitritos positivos
+  const hasUrinaryInfectionClue =
+    /pielonefritis|cistitis|infeccion.*urinari|\bitu\b/.test(textPool) ||
+    (cCase.studiesPool || []).some((s) => /nitritos\s+positiv|bacteriuria|leucocituria/i.test(s.result));
+  if (stdStudy.id === 'hosp-urocultivo' && hasUrinaryInfectionClue) {
+    return {
+      ...stdStudy,
+      result: 'Urocultivo positivo: >100,000 UFC/mL de Escherichia coli uropatógena (antibiograma disponible según sensibilidad local).',
+      interpretation: 'Confirma infección bacteriana del tracto urinario.',
+      isAbnormal: true,
+    };
   }
 
   // Gasometría arterial dinámica según oxigenación, perfusión o acidosis
@@ -1262,12 +1693,28 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
     }
   }
 
-  // PCR y VSG en infecciones, abdomen agudo o isquemia
+  // PCR, VSG y Procalcitonina en infecciones, abdomen agudo o isquemia
   if (stdStudy.id === 'hosp-pcr-vsg' && (isFebrileOrSepsis || isAbdominalAcute || isCardiac)) {
     return {
       ...stdStudy,
-      result: `Proteína C Reactiva (PCR): ${isFebrileOrSepsis ? '145 mg/L' : '48 mg/L'} | VSG: ${isFebrileOrSepsis ? '54 mm/h' : '32 mm/h'}.`,
-      interpretation: 'Elevación de reactantes de fase aguda acorde con proceso inflamatorio o infeccioso activo.',
+      result: `Proteína C Reactiva (PCR): ${isFebrileOrSepsis ? '145 mg/L' : '48 mg/L'}.`,
+      interpretation: 'Elevación de proteína C reactiva acorde con proceso inflamatorio o infeccioso activo.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-vsg' && (isFebrileOrSepsis || isAbdominalAcute || /lupus|artritis|vasculit/.test(textPool))) {
+    return {
+      ...stdStudy,
+      result: `Velocidad de Sedimentación Globular (VSG): ${isFebrileOrSepsis ? '54 mm/h' : '38 mm/h'}.`,
+      interpretation: 'Aceleración de la velocidad de sedimentación globular acorde a inflamación sistémica.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-procalcitonina' && isFebrileOrSepsis) {
+    return {
+      ...stdStudy,
+      result: `Procalcitonina sérica: ${isShockOrDehydrated ? '4.8 ng/mL' : '1.4 ng/mL'} (ELEVADA).`,
+      interpretation: 'Elevación de procalcitonina altamente sugestiva de infección bacteriana sistémica.',
       isAbnormal: true,
     };
   }
@@ -1486,29 +1933,56 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
   if (stdStudy.id === 'hosp-vitamina-b1-b6' && hasAlcoholOrMalnutrition) {
     return {
       ...stdStudy,
-      result: 'Vitamina B1 (Tiamina en sangre total): 38 nmol/L (BAJA) | Vitamina B6: 4.1 mcg/L (baja).',
-      interpretation: 'Déficit de tiamina y piridoxina asociado a consumo crónico de alcohol o desnutrición; requiere reposición parenteral antes de infundir dextrosa.',
+      result: 'Vitamina B1 (Tiamina en sangre total): 38 nmol/L (BAJA).',
+      interpretation: 'Déficit severo de tiamina asociado a consumo crónico de alcohol o desnutrición; requiere reposición parenteral antes de infundir dextrosa.',
       isAbnormal: true,
     };
   }
-  if (stdStudy.id === 'hosp-vitamina-b12-folato' && hasAlcoholOrMalnutrition) {
+  if (stdStudy.id === 'hosp-vitamina-b6' && hasAlcoholOrMalnutrition) {
     return {
       ...stdStudy,
-      result: 'Ácido fólico sérico (B9): 2.4 ng/mL (BAJO) | Vitamina B12: 245 pg/mL (limítrofe) | Homocisteína: 19.8 µmol/L.',
+      result: 'Vitamina B6 (PLP): 4.1 mcg/L (BAJA).',
+      interpretation: 'Déficit nutricional de piridoxina asociado a alcoholismo crónico o malabsorción.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-acido-folico' && hasAlcoholOrMalnutrition) {
+    return {
+      ...stdStudy,
+      result: 'Ácido fólico sérico (B9): 2.4 ng/mL (BAJO).',
       interpretation: 'Deficiencia de folato asociada a ingesta pobre o hepatopatía crónica.',
       isAbnormal: true,
     };
   }
+  if (stdStudy.id === 'hosp-homocisteina' && hasAlcoholOrMalnutrition) {
+    return {
+      ...stdStudy,
+      result: 'Homocisteína sérica total: 19.8 µmol/L (ELEVADA).',
+      interpretation: 'Hiperhomocisteinemia secundaria a déficit de vitaminas del grupo B.',
+      isAbnormal: true,
+    };
+  }
 
-  // Vitamina D en adulto mayor, osteoporosis, fractura o enfermedad renal
+  // Vitamina D y PTH en adulto mayor, osteoporosis, fractura o enfermedad renal
   if (
     stdStudy.id === 'hosp-vitamina-d' &&
     (cCase.patientInfo.age >= 68 || isRenal || /osteoporos|fractura|cadera|osteomalac/.test(textPool))
   ) {
     return {
       ...stdStudy,
-      result: `25-OH-Vitamina D total: ${isRenal ? '16.8' : '14.5'} ng/mL (DEFICIENCIA) | PTH intacta: ${isRenal ? '108' : '76'} pg/mL.`,
-      interpretation: 'Hipovitaminosis D con elevación compensatoria de PTH acorde al perfil óseo/renal o edad avanzada del paciente.',
+      result: `25-OH-Vitamina D total: ${isRenal ? '16.8' : '14.5'} ng/mL (DEFICIENCIA).`,
+      interpretation: 'Hipovitaminosis D acorde al perfil óseo/renal o edad avanzada del paciente.',
+      isAbnormal: true,
+    };
+  }
+  if (
+    stdStudy.id === 'hosp-pth' &&
+    (cCase.patientInfo.age >= 68 || isRenal || /osteoporos|fractura|cadera|osteomalac/.test(textPool))
+  ) {
+    return {
+      ...stdStudy,
+      result: `PTH intacta: ${isRenal ? '108' : '76'} pg/mL (ELEVADA).`,
+      interpretation: 'Hiperparatiroidismo secundario compensatorio acorde al metabolismo calcio-vitamina D.',
       isAbnormal: true,
     };
   }
@@ -1717,32 +2191,104 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
     };
   }
 
-  // HbA1c y perfil lipídico en diabetes, cetoacidosis, cardiopatía isquémica o síndrome metabólico
-  if (stdStudy.id === 'hosp-hba1c-lipidos' && (/diabet|cetoacidosis|hiperosmolar|infarto|angina|ictus|metabolic|dislipid/.test(textPool) || (vitals.bloodGlucose && vitals.bloodGlucose >= 180))) {
+  // HbA1c y perfil lipídico separados
+  if (stdStudy.id === 'hosp-hba1c' && (/diabet|cetoacidosis|hiperosmolar/.test(textPool) || (vitals.bloodGlucose && vitals.bloodGlucose >= 180))) {
     return {
       ...stdStudy,
-      result: `HbA1c: ${vitals.bloodGlucose && vitals.bloodGlucose >= 180 ? '9.8%' : '6.8%'} | Colesterol Total: 238 mg/dL | LDL: 156 mg/dL | Triglicéridos: 220 mg/dL.`,
-      interpretation: 'Descontrol glucémico crónico y/o dislipidemia aterogénica relevante.',
+      result: `HbA1c: ${vitals.bloodGlucose && vitals.bloodGlucose >= 180 ? '9.8%' : '6.8%'} (ELEVADA).`,
+      interpretation: 'Descontrol glucémico crónico trimestral.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-perfil-lipidos' && /diabet|infarto|angina|ictus|metabolic|dislipid|pancreatitis/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Colesterol Total: 238 mg/dL | LDL: 156 mg/dL | HDL: 36 mg/dL | Triglicéridos: 220 mg/dL.',
+      interpretation: 'Dislipidemia aterogénica relevante.',
       isAbnormal: true,
     };
   }
 
-  // Perfil férrico en anemias o sangrado digestivo
+  // Ferritina y hierro sérico separados
+  if (stdStudy.id === 'hosp-ferritina' && /anemia|ferropen|hemorrag|melena|hematemes|hipermenorrea|ulcera/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Ferritina sérica: 9 ng/mL (BAJA).',
+      interpretation: 'Depleción severa de depósitos corporales de hierro compatible con ferropenia.',
+      isAbnormal: true,
+    };
+  }
   if (stdStudy.id === 'hosp-perfil-ferrico' && /anemia|ferropen|hemorrag|melena|hematemes|hipermenorrea|ulcera/.test(textPool)) {
     return {
       ...stdStudy,
-      result: 'Hierro sérico: 28 mcg/dL (BAJO) | Ferritina sérica: 9 ng/mL (BAJA) | TIBC: 425 mcg/dL | Saturación de transferrina: 7%.',
-      interpretation: 'Depleción severa de reservas férricas compatible con anemia ferropénica o pérdida hemática.',
+      result: 'Hierro sérico: 28 mcg/dL (BAJO) | TIBC: 425 mcg/dL | Saturación de transferrina: 7%.',
+      interpretation: 'Cinética férrica compatible con ferropenia o pérdida hemática.',
       isAbnormal: true,
     };
   }
 
-  // Panel autoinmune en lupus, vasculitis, artritis o enfermedades inflamatorias sistémicas
+  // ANA y Complemento separados
   if (stdStudy.id === 'hosp-panel-autoinmune' && /lupus|artritis|vasculit|autoinmun|serositis|hashimoto|tiroiditis/.test(textPool)) {
     return {
       ...stdStudy,
-      result: 'Anticuerpos Antinucleares (ANA) positivos a título significativo (1:320) con descenso sérico de fracciones del complemento C3 y C4.',
-      interpretation: 'Perfil serológico autoinmune positivo orientativo hacia enfermedad reumatológica o autoinmune sistémica.',
+      result: 'Anticuerpos Antinucleares (ANA) positivos a título significativo (1:320).',
+      interpretation: 'Positividad de anticuerpos antinucleares orientativa de patología autoinmune sistémica.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-complemento' && /lupus|vasculit|glomerulonefrit/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Complemento C3: 58 mg/dL (BAJO) | Complemento C4: 10 mg/dL (BAJO).',
+      interpretation: 'Hipocomplementemia por consumo inmune activo.',
+      isAbnormal: true,
+    };
+  }
+
+  // CPK y LDH dinámicos
+  if (stdStudy.id === 'hosp-cpk' && /rabdomiolis|compartimental|isquem|miopat|convuls|tetanos/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'CPK total: 2,480 U/L (MARCADAMENTE ELEVADA).',
+      interpretation: 'Elevación marcada indicativa de lesión muscular aguda / rabdomiólisis.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-ldh' && /hemolis|ptt|purpura trombocitopenica|megaloblast|b12|palud|malaria|tep|tromboembol/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'LDH sérica: 685 U/L (ELEVADA).',
+      interpretation: 'Elevación de LDH compatible con hemólisis, recambio celular acelerado o necrosis tisular.',
+      isAbnormal: true,
+    };
+  }
+
+  // Ecografías específicas y Doppler venoso
+  if (stdStudy.id === 'hosp-us-pelvico' && /ectopico|aborto|eip|pelvic|ovaric|anexial/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Hallazgos pélvicos ecográficos positivos acordes al proceso ginecoobstétrico (ocupación/masa anexial o líquido libre en fondo de saco de Douglas).',
+      interpretation: 'Ecografía pélvica patológica compatible con el cuadro clínico ginecológico.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-us-renal' && (isObstructiveUro || isRenal)) {
+    return {
+      ...stdStudy,
+      result: isObstructiveUro
+        ? 'Hidronefrosis unilateral grado I-II con dilatación ureteral proximal ipsilateral y ausencia de jet ureteral.'
+        : 'Incremento discreto de ecogenicidad cortical renal bilateral sin dilatación pielocalicial.',
+      interpretation: isObstructiveUro
+        ? 'Uropatía obstructiva aguda confirmada por ecografía.'
+        : 'Cambios ecográficos de nefropatía parenquimatosa sin obstrucción.',
+      isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-doppler-venoso' && /trombosis venosa|tvp|insuficiencia venosa|ulcera venosa|tromboembol/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Alteración en estudio Doppler venoso (falta de compresibilidad focal o reflujo valvular profundo/superficial según territorio evaluado).',
+      interpretation: 'Estudio Doppler venoso patológico congruente con compromiso vascular venoso periférico.',
       isAbnormal: true,
     };
   }
@@ -1757,13 +2303,21 @@ function inferDynamicRelatedStudy(stdStudy: ComplementaryStudy, cCase: ClinicalC
     };
   }
 
-  // Estudio coprológico en diarrea infecciosa o inflamatoria
-  if (stdStudy.id === 'hosp-coprologico' && /diarrea|gastroenterit|colitis|hematoquez|disenter|crohn|ulcerosa/.test(textPool)) {
+  // Sangre oculta / Coprocultivo en diarrea infecciosa o inflamatoria
+  if (stdStudy.id === 'hosp-soh' && /hematoquez|disenter|crohn|ulcerosa|hemorragia digestiva/.test(textPool)) {
     return {
       ...stdStudy,
-      result: 'Leucocitos fecales elevados (>15 por campo) y sangre oculta positiva en heces; muestras procesadas para coprocultivo, parasitología y toxinas.',
-      interpretation: 'Coprológico compatible con proceso inflamatorio o infeccioso enterocólico.',
+      result: 'Sangre oculta en heces (SOH inmunológica): POSITIVA.',
+      interpretation: 'Sangrado digestivo micro/macroscópico activo en tracto gastrointestinal.',
       isAbnormal: true,
+    };
+  }
+  if (stdStudy.id === 'hosp-coprocultivo' && /diarrea|gastroenterit|disenter|fiebre tifoidea/.test(textPool)) {
+    return {
+      ...stdStudy,
+      result: 'Coprocultivo procesado en medios selectivos para enteropatógenos invasivos; pendiente reporte definitivo de tipificación y antibiograma (48-72 h).',
+      interpretation: 'Muestra fecal en procesamiento microbiológico.',
+      isAbnormal: false,
     };
   }
 
@@ -1790,33 +2344,72 @@ function resolveContextualHospitalStudy(stdStudy: ComplementaryStudy, cCase: Cli
   };
 }
 
+function normStudyName(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 /**
- * Normaliza y compara títulos de estudios para evitar duplicados con los del caso base
+ * Normaliza y compara títulos de estudios individuales para evitar duplicados sin mezclar pruebas distintas.
  */
 function isSameStudyCategory(name1: string, name2: string): boolean {
-  const n1 = name1.toLowerCase();
-  const n2 = name2.toLowerCase();
+  const n1 = normStudyName(name1);
+  const n2 = normStudyName(name2);
 
-  if (n1.includes('hemograma') || n1.includes('biometría hemática')) {
-    return n2.includes('hemograma') || n2.includes('biometría hemática');
+  if (n1.includes('hemograma') || n1.includes('biometria hematica')) {
+    return n2.includes('hemograma') || n2.includes('biometria hematica');
   }
-  if (n1.includes('química sanguínea') || (n1.includes('urea') && n1.includes('creatinina'))) {
-    return n2.includes('química sanguínea') || (n2.includes('urea') && n2.includes('creatinina'));
+  if (
+    n1.includes('frotis') &&
+    !n1.includes('gota gruesa') &&
+    !n1.includes('malaria') &&
+    !n1.includes('flujo') &&
+    !n1.includes('vaginal') &&
+    !n1.includes('gram')
+  ) {
+    return (
+      n2.includes('frotis') &&
+      !n2.includes('gota gruesa') &&
+      !n2.includes('malaria') &&
+      !n2.includes('flujo') &&
+      !n2.includes('vaginal') &&
+      !n2.includes('gram')
+    );
+  }
+  if (n1.includes('reticulocit')) {
+    return n2.includes('reticulocit');
+  }
+  if (n1.includes('coombs')) {
+    return n2.includes('coombs');
+  }
+  if (n1.includes('grupo sanguineo') || n1.includes('factor rh')) {
+    return n2.includes('grupo sanguineo') || n2.includes('factor rh');
+  }
+  if (n1.includes('quimica sanguinea') || (n1.includes('urea') && n1.includes('creatinina'))) {
+    return n2.includes('quimica sanguinea') || (n2.includes('urea') && n2.includes('creatinina'));
   }
   if (n1.includes('electrolito')) {
     return n2.includes('electrolito');
   }
-  if (n1.includes('gasometría') || n1.includes('gasometria')) {
-    return n2.includes('gasometría') || n2.includes('gasometria');
+  if (n1.includes('gasometria')) {
+    return n2.includes('gasometria');
   }
-  if (n1.includes('perfil hepático') || n1.includes('bilirrubina')) {
-    return n2.includes('perfil hepático') || n2.includes('bilirrubina');
+  if (n1.includes('perfil hepatico') || n1.includes('bilirrubina')) {
+    return n2.includes('perfil hepatico') || n2.includes('bilirrubina');
   }
-  if ((n1.includes('proteína c reactiva') || n1.includes('pcr')) && !n1.includes('hisopado') && !n1.includes('viral')) {
-    return (n2.includes('proteína c reactiva') || n2.includes('pcr')) && !n2.includes('hisopado') && !n2.includes('viral');
+  if ((n1.includes('proteina c reactiva') || /\bpcr\b/.test(n1)) && !n1.includes('hisopado') && !n1.includes('viral') && !n1.includes('genexpert')) {
+    return (n2.includes('proteina c reactiva') || /\bpcr\b/.test(n2)) && !n2.includes('hisopado') && !n2.includes('viral') && !n2.includes('genexpert');
   }
-  if (n1.includes('tiroid') || n1.includes('tsh')) {
-    return n2.includes('tiroid') || n2.includes('tsh');
+  if (n1.includes('vsg') || n1.includes('sedimentacion globular')) {
+    return n2.includes('vsg') || n2.includes('sedimentacion globular');
+  }
+  if (n1.includes('procalcitonina')) {
+    return n2.includes('procalcitonina');
+  }
+  if (n1.includes('perfil tiroideo') || n1.includes('tsh')) {
+    return n2.includes('perfil tiroideo') || n2.includes('tsh');
   }
   if (n1.includes('hcg') || n1.includes('embarazo')) {
     return n2.includes('hcg') || n2.includes('embarazo');
@@ -1827,8 +2420,8 @@ function isSameStudyCategory(name1: string, name2: string): boolean {
   if (n1.includes('arbovir') || n1.includes('dengue') || n1.includes('ns1')) {
     return n2.includes('arbovir') || n2.includes('dengue') || n2.includes('ns1');
   }
-  if (n1.includes('malaria') || n1.includes('gota gruesa') || n1.includes('hemoparásito')) {
-    return n2.includes('malaria') || n2.includes('gota gruesa') || n2.includes('hemoparásito');
+  if (n1.includes('malaria') || n1.includes('gota gruesa') || n1.includes('hemoparasito')) {
+    return n2.includes('malaria') || n2.includes('gota gruesa') || n2.includes('hemoparasito');
   }
   if (n1.includes('leptospira')) {
     return n2.includes('leptospira');
@@ -1836,71 +2429,109 @@ function isSameStudyCategory(name1: string, name2: string): boolean {
   if (n1.includes('troponina')) {
     return n2.includes('troponina');
   }
-  if (n1.includes('ck-mb') || n1.includes('fracción mb') || n1.includes('fraccion mb')) {
-    return n2.includes('ck-mb') || n2.includes('fracción mb') || n2.includes('fraccion mb');
+  if (n1.includes('ck-mb') || n1.includes('fraccion mb')) {
+    return n2.includes('ck-mb') || n2.includes('fraccion mb');
   }
-  if (n1.includes('dímero d') || n1.includes('dimero d')) {
-    return n2.includes('dímero d') || n2.includes('dimero d');
+  if (n1.includes('cpk') || (n1.includes('creatina fosfoquinasa') && !n1.includes('ck-mb') && !n1.includes('fraccion mb'))) {
+    return n2.includes('cpk') || (n2.includes('creatina fosfoquinasa') && !n2.includes('ck-mb') && !n2.includes('fraccion mb'));
   }
-  if (n1.includes('amilasa') || n1.includes('lipasa')) {
-    return n2.includes('amilasa') || n2.includes('lipasa');
+  if (/\bldh\b/.test(n1) || n1.includes('lactato deshidrogenasa')) {
+    return /\bldh\b/.test(n2) || n2.includes('lactato deshidrogenasa');
   }
-  if ((n1.includes('orina') || n1.includes('ego') || n1.includes('urianálisis')) && !n1.includes('toxicol')) {
-    return (n2.includes('orina') || n2.includes('ego') || n2.includes('urianálisis')) && !n2.includes('toxicol');
+  if (n1.includes('acido urico')) {
+    return n2.includes('acido urico');
   }
-  if (n1.includes('coagulación') || n1.includes('tiempos de') || (n1.includes('tp') && n1.includes('ttpa'))) {
-    return n2.includes('coagulación') || n2.includes('tiempos de') || (n2.includes('tp') && n2.includes('ttpa'));
+  if (n1.includes('dimero d')) {
+    return n2.includes('dimero d');
+  }
+  if (n1.includes('amilasa')) {
+    return n2.includes('amilasa');
+  }
+  if (n1.includes('lipasa')) {
+    return n2.includes('lipasa');
+  }
+  if ((n1.includes('examen general de orina') || /\bego\b/.test(n1) || n1.includes('urianalisis')) && !n1.includes('toxicol')) {
+    return (n2.includes('examen general de orina') || /\bego\b/.test(n2) || n2.includes('urianalisis')) && !n2.includes('toxicol');
+  }
+  if (n1.includes('cociente albumina/creatinina')) {
+    return n2.includes('cociente albumina/creatinina');
+  }
+  if (n1.includes('coagulacion') || n1.includes('tiempos de') || (/\btp\b/.test(n1) && n1.includes('ttpa'))) {
+    return n2.includes('coagulacion') || n2.includes('tiempos de') || (/\btp\b/.test(n2) && n2.includes('ttpa'));
   }
   if (n1.includes('hemocultivo')) {
     return n2.includes('hemocultivo');
   }
-  if (n1.includes('punción lumbar') || n1.includes('lcr') || n1.includes('cefalorraquídeo')) {
-    return n2.includes('punción lumbar') || n2.includes('lcr') || n2.includes('cefalorraquídeo');
+  if (n1.includes('puncion lumbar') || /\blcr\b/.test(n1) || n1.includes('cefalorraquideo')) {
+    return n2.includes('puncion lumbar') || /\blcr\b/.test(n2) || n2.includes('cefalorraquideo');
   }
-  if (n1.includes('rx de tórax') || n1.includes('radiografía de tórax') || n1.includes('radiografia de torax') || n1.includes('radiografía portátil de tórax')) {
-    return n2.includes('rx de tórax') || n2.includes('radiografía de tórax') || n2.includes('radiografia de torax');
+  if ((n1.includes('rx de torax') || n1.includes('radiografia de torax') || n1.includes('radiografia portatil de torax')) && !n1.includes('cuello')) {
+    return (n2.includes('rx de torax') || n2.includes('radiografia de torax') || n2.includes('radiografia portatil de torax')) && !n2.includes('cuello');
   }
-  if (n1.includes('rx de abdomen') || n1.includes('radiografía simple de abdomen') || n1.includes('radiografia simple de abdomen')) {
-    return n2.includes('rx de abdomen') || n2.includes('radiografía simple de abdomen') || n2.includes('radiografia simple de abdomen');
+  if (n1.includes('rx de abdomen') || n1.includes('radiografia simple de abdomen')) {
+    return n2.includes('rx de abdomen') || n2.includes('radiografia simple de abdomen');
   }
-  if (n1.includes('ultrasonido') || n1.includes('ecografía')) {
-    return n2.includes('ultrasonido') || n2.includes('ecografía');
+  if (n1.includes('doppler venos')) {
+    return n2.includes('doppler venos');
   }
-  if ((n1.includes('tac') || n1.includes('angiotac') || n1.includes('tomografía')) && (n1.includes('tórax') || n1.includes('torax') || n1.includes('pulmon'))) {
-    return (n2.includes('tac') || n2.includes('angiotac') || n2.includes('tomografía')) && (n2.includes('tórax') || n2.includes('torax') || n2.includes('pulmon'));
+  if (n1.includes('pelvic') && (n1.includes('ultrasonido') || n1.includes('ecografia')) && !n1.includes('abdominal')) {
+    return n2.includes('pelvic') && (n2.includes('ultrasonido') || n2.includes('ecografia')) && !n2.includes('abdominal');
   }
-  if ((n1.includes('tac') || n1.includes('tomografía')) && (n1.includes('abdomen') || n1.includes('pelvis') || n1.includes('apéndice'))) {
-    return (n2.includes('tac') || n2.includes('tomografía')) && (n2.includes('abdomen') || n2.includes('pelvis') || n2.includes('apéndice'));
+  if ((n1.includes('renal') && (n1.includes('ultrasonido') || n1.includes('ecografia'))) && !n1.includes('abdominal')) {
+    return (n2.includes('renal') && (n2.includes('ultrasonido') || n2.includes('ecografia'))) && !n2.includes('abdominal');
   }
-  if ((n1.includes('tac') || n1.includes('tomografía')) && (n1.includes('cráneo') || n1.includes('craneo') || n1.includes('cerebr'))) {
-    return (n2.includes('tac') || n2.includes('tomografía')) && (n2.includes('cráneo') || n2.includes('craneo') || n2.includes('cerebr'));
+  if ((n1.includes('ultrasonido abdominal') || n1.includes('ecografia abdominal')) && !n1.includes('inguinal')) {
+    return (n2.includes('ultrasonido abdominal') || n2.includes('ecografia abdominal')) && !n2.includes('inguinal');
   }
-  if (n1.includes('resonancia') || n1.includes('rmn')) {
-    return n2.includes('resonancia') || n2.includes('rmn');
+  const hasTac1 = /\btac\b|\bangiotac\b|\btomografia\b/.test(n1);
+  const hasTac2 = /\btac\b|\bangiotac\b|\btomografia\b/.test(n2);
+  if (hasTac1 && (n1.includes('torax') || n1.includes('pulmon'))) {
+    return hasTac2 && (n2.includes('torax') || n2.includes('pulmon'));
   }
-  if (n1.includes('electrocardiograma') || n1.includes('ecg')) {
-    return n2.includes('electrocardiograma') || n2.includes('ecg');
+  if (hasTac1 && (n1.includes('abdomen') || n1.includes('abdominal') || n1.includes('pelvis') || n1.includes('apendice')) && !n1.includes('suprarrenal')) {
+    return hasTac2 && (n2.includes('abdomen') || n2.includes('abdominal') || n2.includes('pelvis') || n2.includes('apendice')) && !n2.includes('suprarrenal');
   }
-  if (n1.includes('vitamina b12') || n1.includes('cobalamina') || n1.includes('ácido fólico')) {
-    return n2.includes('vitamina b12') || n2.includes('cobalamina') || n2.includes('ácido fólico');
+  if (hasTac1 && (n1.includes('craneo') || n1.includes('cerebr')) && !n1.includes('angio')) {
+    return hasTac2 && (n2.includes('craneo') || n2.includes('cerebr')) && !n2.includes('angio');
+  }
+  if ((n1.includes('resonancia') || n1.includes('rmn')) && (n1.includes('encefalo') || n1.includes('cerebr')) && !n1.includes('silla') && !n1.includes('cavernoso')) {
+    return (n2.includes('resonancia') || n2.includes('rmn')) && (n2.includes('encefalo') || n2.includes('cerebr')) && !n2.includes('silla') && !n2.includes('cavernoso');
+  }
+  if (n1.includes('electrocardiograma') || /\becg\b/.test(n1)) {
+    return n2.includes('electrocardiograma') || /\becg\b/.test(n2);
+  }
+  if (n1.includes('vitamina b12') || n1.includes('cobalamina')) {
+    return n2.includes('vitamina b12') || n2.includes('cobalamina');
+  }
+  if (n1.includes('acido folico') || n1.includes('folato')) {
+    return n2.includes('acido folico') || n2.includes('folato');
+  }
+  if (n1.includes('homocisteina')) {
+    return n2.includes('homocisteina');
   }
   if (n1.includes('vitamina d') || n1.includes('25-oh')) {
     return n2.includes('vitamina d') || n2.includes('25-oh');
   }
-  if (n1.includes('vitamina b1') || n1.includes('tiamina') || n1.includes('neurotrópicas')) {
-    return n2.includes('vitamina b1') || n2.includes('tiamina') || n2.includes('neurotrópicas');
+  if (n1.includes('paratiroidea') || /\bpth\b/.test(n1)) {
+    return n2.includes('paratiroidea') || /\bpth\b/.test(n2);
   }
-  if (n1.includes('vitaminas a, c, e') || n1.includes('liposolubles')) {
-    return n2.includes('vitaminas a, c, e') || n2.includes('liposolubles');
+  if (/\bvitamina\s+b1\b/.test(n1) || n1.includes('tiamina')) {
+    return /\bvitamina\s+b1\b/.test(n2) || n2.includes('tiamina');
   }
-  if (n1.includes('mediano') || n1.includes('túnel del carpo') || n1.includes('tunel del carpo')) {
-    return n2.includes('mediano') || n2.includes('túnel del carpo') || n2.includes('tunel del carpo');
+  if (/\bvitamina\s+b6\b/.test(n1) || n1.includes('piridox')) {
+    return /\bvitamina\s+b6\b/.test(n2) || n2.includes('piridox');
   }
-  if (n1.includes('estimulación nerviosa repetitiva') || n1.includes('jolly')) {
-    return n2.includes('estimulación nerviosa repetitiva') || n2.includes('jolly');
+  if (n1.includes('prealbumina')) {
+    return n2.includes('prealbumina');
   }
-  if ((n1.includes('electromiografía') || n1.includes('electromiografia') || n1.includes('conducción nerviosa')) && !n1.includes('mediano') && !n1.includes('repetitiva')) {
-    return (n2.includes('electromiografía') || n2.includes('electromiografia') || n2.includes('conducción nerviosa')) && !n2.includes('mediano') && !n2.includes('repetitiva');
+  if (n1.includes('mediano') || n1.includes('tunel del carpo')) {
+    return n2.includes('mediano') || n2.includes('tunel del carpo');
+  }
+  if (n1.includes('estimulacion nerviosa repetitiva') || n1.includes('jolly')) {
+    return n2.includes('estimulacion nerviosa repetitiva') || n2.includes('jolly');
+  }
+  if ((n1.includes('electromiografia') || n1.includes('conduccion nerviosa')) && !n1.includes('mediano') && !n1.includes('repetitiva')) {
+    return (n2.includes('electromiografia') || n2.includes('conduccion nerviosa')) && !n2.includes('mediano') && !n2.includes('repetitiva');
   }
   if (n1.includes('endoscopia digestiva alta') || n1.includes('panendoscopia') || n1.includes('esofagogastroduodenoscopia')) {
     return n2.includes('endoscopia digestiva alta') || n2.includes('panendoscopia') || n2.includes('esofagogastroduodenoscopia');
@@ -1923,8 +2554,8 @@ function isSameStudyCategory(name1: string, name2: string): boolean {
   if (n1.includes('audiometr') || n1.includes('timpanometr')) {
     return n2.includes('audiometr') || n2.includes('timpanometr');
   }
-  const isBpHolter1 = n1.includes('mapa') || (n1.includes('holter') && (n1.includes('presión') || n1.includes('presion')));
-  const isBpHolter2 = n2.includes('mapa') || (n2.includes('holter') && (n2.includes('presión') || n2.includes('presion')));
+  const isBpHolter1 = n1.includes('mapa') || (n1.includes('holter') && n1.includes('presion'));
+  const isBpHolter2 = n2.includes('mapa') || (n2.includes('holter') && n2.includes('presion'));
   if (isBpHolter1 || isBpHolter2) {
     return isBpHolter1 && isBpHolter2;
   }
@@ -1935,45 +2566,76 @@ function isSameStudyCategory(name1: string, name2: string): boolean {
     return n2.includes('ecocardiograma') || n2.includes('ecott');
   }
   const isBoneRx1 =
-    n1.includes('radiografía osteoarticular') ||
     n1.includes('radiografia osteoarticular') ||
-    n1.includes('radiografía de cadera') ||
     n1.includes('radiografia de cadera') ||
-    n1.includes('radiografía ap') ||
     n1.includes('radiografia ap') ||
-    n1.includes('radiografía de tobillo') ||
     n1.includes('radiografia de tobillo') ||
-    (n1.includes('radiografía') && (n1.includes('pierna') || n1.includes('tibia') || n1.includes('lumbar')));
+    (n1.includes('radiografia') && (n1.includes('pierna') || n1.includes('tibia') || n1.includes('lumbar') || n1.includes('codo')));
   const isBoneRx2 =
-    n2.includes('radiografía osteoarticular') ||
     n2.includes('radiografia osteoarticular') ||
-    n2.includes('radiografía de cadera') ||
     n2.includes('radiografia de cadera') ||
-    n2.includes('radiografía ap') ||
     n2.includes('radiografia ap') ||
-    n2.includes('radiografía de tobillo') ||
     n2.includes('radiografia de tobillo') ||
-    (n2.includes('radiografía') && (n2.includes('pierna') || n2.includes('tibia') || n2.includes('lumbar')));
+    (n2.includes('radiografia') && (n2.includes('pierna') || n2.includes('tibia') || n2.includes('lumbar') || n2.includes('codo')));
   if (isBoneRx1 && isBoneRx2) {
     return true;
   }
-  if (n1.includes('probnp') || n1.includes('pro-bnp') || /\bbnp\b/.test(n1) || n1.includes('péptido natriurético')) {
-    return n2.includes('probnp') || n2.includes('pro-bnp') || /\bbnp\b/.test(n2) || n2.includes('péptido natriurético');
+  if (n1.includes('probnp') || n1.includes('pro-bnp') || /\bbnp\b/.test(n1) || n1.includes('peptido natriuretico')) {
+    return n2.includes('probnp') || n2.includes('pro-bnp') || /\bbnp\b/.test(n2) || n2.includes('peptido natriuretico');
   }
   if (n1.includes('hba1c') || n1.includes('hemoglobina glucosilada')) {
     return n2.includes('hba1c') || n2.includes('hemoglobina glucosilada');
   }
-  if (n1.includes('perfil de hierro') || n1.includes('ferritina')) {
-    return n2.includes('perfil de hierro') || n2.includes('ferritina');
+  if (n1.includes('perfil lipidico')) {
+    return n2.includes('perfil lipidico');
   }
-  if (n1.includes('panel autoinmune') || (n1.includes('ana') && n1.includes('factor reumatoide'))) {
-    return n2.includes('panel autoinmune') || (n2.includes('ana') && n2.includes('factor reumatoide'));
+  if (n1.includes('ferritina')) {
+    return n2.includes('ferritina');
+  }
+  if (n1.includes('hierro serico') || n1.includes('cinetica de hierro') || n1.includes('perfil de hierro')) {
+    return n2.includes('hierro serico') || n2.includes('cinetica de hierro') || n2.includes('perfil de hierro');
+  }
+  if (/\bana\b/.test(n1) || n1.includes('antinucleares')) {
+    return /\bana\b/.test(n2) || n2.includes('antinucleares');
+  }
+  if (n1.includes('factor reumatoide')) {
+    return n2.includes('factor reumatoide');
+  }
+  if (n1.includes('anti-ccp')) {
+    return n2.includes('anti-ccp');
+  }
+  if (n1.includes('complemento')) {
+    return n2.includes('complemento');
+  }
+  if (n1.includes('cortisol serico') || n1 === 'cortisol basal') {
+    return n2.includes('cortisol serico') || n2 === 'cortisol basal';
+  }
+  if (n1.includes('prolactina')) {
+    return n2.includes('prolactina');
   }
   if (n1.includes('toxicol')) {
     return n2.includes('toxicol');
   }
-  if (n1.includes('coprol') || n1.includes('coproparasitosc')) {
-    return n2.includes('coprol') || n2.includes('coproparasitosc');
+  if (n1.includes('coproparasitosc')) {
+    return n2.includes('coproparasitosc');
+  }
+  if (n1.includes('sangre oculta')) {
+    return n2.includes('sangre oculta');
+  }
+  if (n1.includes('coprocultivo')) {
+    return n2.includes('coprocultivo');
+  }
+  if (n1.includes('estreptococ')) {
+    return n2.includes('estreptococ');
+  }
+  if (n1.includes('helicobacter')) {
+    return n2.includes('helicobacter');
+  }
+  if (/\bvih\b/.test(n1)) {
+    return /\bvih\b/.test(n2);
+  }
+  if (n1.includes('hepatitis')) {
+    return n2.includes('hepatitis');
   }
 
   return false;
@@ -1984,26 +2646,99 @@ function getSubcategoryRank(subcategory: string): number {
   return idx === -1 ? HOSPITAL_SUBCATEGORY_ORDER.length : idx;
 }
 
-function sortStudiesCanonically(studies: ComplementaryStudy[]): ComplementaryStudy[] {
-  return [...studies].sort((a, b) => {
-    const rankDiff = getSubcategoryRank(a.subcategory) - getSubcategoryRank(b.subcategory);
-    if (rankDiff !== 0) return rankDiff;
-    const nameDiff = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
-    if (nameDiff !== 0) return nameDiff;
-    return a.id.localeCompare(b.id);
-  });
+function stableHash(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Ordena todo el catálogo con criterio clínico hospitalario discreto:
+ * - Las pruebas rutinarias universales aparecen en los primeros puestos de cada área
+ *   (siguiendo el orden de STANDARD_HOSPITAL_STUDIES).
+ * - Si una prueba del caso ocupa un espacio estándar (ej. Hemograma o EGO), hereda su posición estándar.
+ * - Las pruebas específicas/especializadas propias del caso que no pertenecen al menú rutinario
+ *   se intercalan de forma determinista y discreta en la zona media-baja de su subcategoría
+ *   (nunca en posición #1 ni #2 cuando hay pruebas basales en el área).
+ */
+function orderStudiesDiscreetly(studies: ComplementaryStudy[], caseId: string): ComplementaryStudy[] {
+  const catalogSlotRank = (study: ComplementaryStudy): number | null => {
+    const directIdx = STANDARD_HOSPITAL_STUDIES.findIndex((std) =>
+      study.id.startsWith(`${std.id}-`) || study.id === std.id
+    );
+    if (directIdx !== -1) return directIdx;
+    const matchIdx = STANDARD_HOSPITAL_STUDIES.findIndex((std) =>
+      isSameStudyCategory(study.name, std.name)
+    );
+    return matchIdx !== -1 ? matchIdx : null;
+  };
+
+  const buckets = new Map<string, { routines: Array<{ study: ComplementaryStudy; rank: number }>; specials: ComplementaryStudy[] }>();
+
+  for (const s of studies) {
+    if (!buckets.has(s.subcategory)) {
+      buckets.set(s.subcategory, { routines: [], specials: [] });
+    }
+    const bucket = buckets.get(s.subcategory)!;
+    const rank = catalogSlotRank(s);
+    if (rank !== null) {
+      bucket.routines.push({ study: s, rank });
+    } else {
+      bucket.specials.push(s);
+    }
+  }
+
+  const orderedSubcategories = Array.from(buckets.keys()).sort(
+    (a, b) => getSubcategoryRank(a) - getSubcategoryRank(b)
+  );
+
+  const result: ComplementaryStudy[] = [];
+  for (const sub of orderedSubcategories) {
+    const bucket = buckets.get(sub)!;
+    bucket.routines.sort((a, b) => a.rank - b.rank || a.study.name.localeCompare(b.study.name, 'es'));
+    const subList = bucket.routines.map((r) => r.study);
+
+    // Ordenar especiales de manera determinista por hash antes de insertarlos discretamente
+    const specialsSorted = [...bucket.specials].sort(
+      (a, b) =>
+        (stableHash(`${caseId}:${a.id}`) % 997) - (stableHash(`${caseId}:${b.id}`) % 997) ||
+        a.name.localeCompare(b.name, 'es')
+    );
+
+    for (const sp of specialsSorted) {
+      if (subList.length === 0) {
+        subList.push(sp);
+      } else if (subList.length <= 2) {
+        // Nunca #1 si ya existe al menos 1 estudio rutinario en la subcategoría
+        subList.push(sp);
+      } else {
+        // Intercalar en zona media-baja: al menos después de los 2 primeros estudios rutinarios
+        const minIdx = Math.min(subList.length, Math.max(2, Math.floor(subList.length * 0.45)));
+        const span = Math.max(1, subList.length - minIdx + 1);
+        const insertIdx = minIdx + (stableHash(`${caseId}:${sp.id}:${sp.name}`) % span);
+        subList.splice(insertIdx, 0, sp);
+      }
+    }
+
+    result.push(...subList);
+  }
+
+  return result;
 }
 
 /**
  * Enriquece un caso clínico con el catálogo unificado de pruebas hospitalarias.
- * Conserva las pruebas primarias propias del caso y, para las demás pruebas hospitalarias
- * (Gasometría, BH, Química, Electrolitos, Perfil Hepático, PCR/VSG, β-hCG, TAC, RMN, etc.),
- * inyecta resultados contextuales que detectan afecciones relacionadas cuando corresponden.
- * Ordena todo el catálogo de manera canónica por área clínica y orden alfabético para evitar
- * que los paraclínicos confirmatorios aparezcan en los primeros lugares del menú.
+ * 1. Descompone cualquier estudio agrupado del caso en pruebas únicas independientes
+ *    y limpia paréntesis o etiquetas que den pistas diagnósticas.
+ * 2. Añade todas las pruebas únicas del catálogo hospitalario que no existan ya en el caso,
+ *    resolviendo hallazgos contextuales relacionados fisiopatológicamente.
+ * 3. Ordena discretamente para evitar que las pruebas específicas queden arriba dando pistas.
  */
 export function enrichCaseWithHospitalCatalog(cCase: ClinicalCase): ClinicalCase {
-  const existingStudies = cCase.studiesPool || [];
+  const existingStudies = normalizeStudiesPoolToSingleTests(cCase.studiesPool || []);
   const mergedStudies: ComplementaryStudy[] = [...existingStudies];
 
   for (const stdStudy of STANDARD_HOSPITAL_STUDIES) {
@@ -2015,6 +2750,6 @@ export function enrichCaseWithHospitalCatalog(cCase: ClinicalCase): ClinicalCase
 
   return {
     ...cCase,
-    studiesPool: sortStudiesCanonically(mergedStudies),
+    studiesPool: orderStudiesDiscreetly(mergedStudies, cCase.id || 'default'),
   };
 }

@@ -1785,6 +1785,7 @@ export default function App() {
                                   onGoToAnamnesis={() => focusSection('anamnesis')}
                                   onUnlockEmergencyChart={() => setEmergencyChartUnlocked(true)}
                                   emergencyChartUnlocked={emergencyChartUnlocked}
+                                  unlockedStudyNames={unlockedStudyObjects.map((s) => s.name)}
                                 />
                               )}
 

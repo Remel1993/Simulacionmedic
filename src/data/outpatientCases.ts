@@ -880,18 +880,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         isAbnormal: false,
       },
     ],
-    studiesPool: [
-      {
-        id: 'img-tac-migrana',
-        category: 'Imagen',
-        subcategory: 'Tomografía',
-        name: 'Valoración clínica neuro-oftalmológica (Neuroimagen diferida)',
-        result: 'Sin indicación de neuroimagen urgente: episodios recurrentes con fenómeno visual transitorio gradual de 20 min, exploración neurológica focal normal, afebril y sin inicio súbito en trueno.',
-        referenceRange: 'Sin banderas rojas (SNOOP4 negativo)',
-        interpretation: 'Cumple criterios clínicos completos de migraña clásica con aura sin requerir radiación innecesaria.',
-        isAbnormal: false,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Migraña Clásica con Aura Visual',
       differentialDiagnoses: [
@@ -1250,18 +1239,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         isAbnormal: false,
       },
     ],
-    studiesPool: [
-      {
-        id: 'lab-oma-clinico',
-        category: 'Laboratorio',
-        subcategory: 'Inflamación e Infección',
-        name: 'Evaluación Clínica Otoscópica (Paraclínicos no indicados)',
-        result: 'Membrana timpánica derecha intensamente hiperémica, opaca y abombada con pérdida del reflejo luminoso; fiebre >38°C y dolor ótico >18 h.',
-        referenceRange: 'Diagnóstico clínico',
-        interpretation: 'No requiere biometría hemática ni radiografías de rutina en paciente pediátrico inmunocompetente.',
-        isAbnormal: true,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Otitis Media Aguda Derecha',
       differentialDiagnoses: [
@@ -2018,18 +1996,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         isAbnormal: false,
       },
     ],
-    studiesPool: [
-      {
-        id: 'img-vppb-clinico',
-        category: 'Imagen',
-        subcategory: 'Tomografía',
-        name: 'Evaluación neuro-otológica clínica (Neuroimagen no indicada)',
-        result: 'Episodios posicionales breves (<1 min) con nistagmo torsional fatigable con latencia a la maniobra posicional y exploración cerebelosa/pares craneales normal; sin criterios para TAC ni RMN cerebral urgente.',
-        referenceRange: 'Sin datos centrales',
-        interpretation: 'Confirma vértigo periférico posicional paroxístico benigno sin sospecha de EVC cerebeloso.',
-        isAbnormal: false,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Vértigo Posicional Paroxístico Benigno (VPPB) de Canal Posterior Derecho',
       differentialDiagnoses: [
@@ -2389,18 +2356,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         isAbnormal: false,
       },
     ],
-    studiesPool: [
-      {
-        id: 'img-bell-clinico',
-        category: 'Imagen',
-        subcategory: 'Tomografía',
-        name: 'Evaluación Clínica Neurológica (Neuroimagen no indicada inicialmente)',
-        result: 'Déficit motor hemifacial derecho completo (ramas superior e inferior del VII par craneal) de instauración aguda sin afectación de otros pares craneales, fuerza en extremidades, vía piramidal ni signos cerebelosos.',
-        referenceRange: 'Diagnóstico clínico',
-        interpretation: 'El compromiso frontal completo + otoscopia limpia + examen motor normal hacen innecesaria una TAC urgente.',
-        isAbnormal: false,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Parálisis Facial Periférica Idiopática (Parálisis de Bell)',
       differentialDiagnoses: [
@@ -2622,18 +2578,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         semiologyNote: 'Lasègue negativo, exploración neurológica normal y ausencia de banderas rojas confirman lumbalgia mecánica aguda no complicada.',
       },
     ],
-    studiesPool: [
-      {
-        id: 'img-rx-lumbalgia',
-        category: 'Imagen',
-        subcategory: 'Radiología',
-        name: 'Criterios clínicos de imagen lumbar (Radiografía / RMN no indicada inicialmente)',
-        result: 'Ausencia total de banderas rojas (sin déficit neurológico, sin trauma mayor de alta energía, sin fiebre, sin sospecha oncológica, edad <50 años): guías recomiendan NO realizar radiografías ni RMN en las primeras 4-6 semanas.',
-        referenceRange: 'Sin banderas rojas',
-        interpretation: 'Lumbalgia mecánica aguda benigna de manejo conservador ambulatorio.',
-        isAbnormal: false,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Lumbalgia Mecánica Aguda No Complicada (Sin Radiculopatía)',
       differentialDiagnoses: [
@@ -2740,18 +2685,7 @@ export const OUTPATIENT_CASES: ClinicalCase[] = [
         isAbnormal: true,
       },
     ],
-    studiesPool: [
-      {
-        id: 'lab-gea-clinico',
-        category: 'Laboratorio',
-        subcategory: 'Inflamación e Infección',
-        name: 'Evaluación Clínica de Hidratación (Sin indicación de coprocultivo inicial)',
-        result: 'Evacuaciones líquidas frecuentes sin sangre ni moco macroscópico y sin fiebre alta; tolerancia parcial a vía oral y perfusión distal conservada.',
-        referenceRange: 'Diagnóstico clínico',
-        interpretation: 'No requiere antibióticos ni exámenes de laboratorio invasivos en gastroenteritis viral aguda leve.',
-        isAbnormal: false,
-      },
-    ],
+    studiesPool: [],
     solution: {
       correctDiagnosis: 'Gastroenteritis Aguda Probable Viral con Deshidratación Leve',
       differentialDiagnoses: [

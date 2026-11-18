@@ -35,6 +35,37 @@ interface BackgroundTabProps {
   onGoToAnamnesis?: () => void;
   onUnlockEmergencyChart?: () => void;
   emergencyChartUnlocked?: boolean;
+  unlockedStudyNames?: string[];
+}
+
+function sanitizeBackgroundItems(items: string[] | undefined, unlockedStudyNames: string[]): string[] {
+  if (!items || items.length === 0) return [];
+  const studyCorpus = unlockedStudyNames
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const hasPregnancyTestUnlocked = /\b(hcg|bhcg|embarazo)\b/.test(studyCorpus);
+  const hasHivTestUnlocked = /\bvih\b/.test(studyCorpus);
+
+  return items
+    .map((raw) => {
+      let cleaned = raw;
+      if (!hasPregnancyTestUnlocked) {
+        cleaned = cleaned
+          .replace(/(?:;\s*|\s*,\s*|\s*\.\s*)?prueba\s+(?:r[aá]pida\s+|inmunol[oó]gica\s+)?de\s+embarazo(?:\s+(?:negativa|positiva|en\s+orina|en\s+sangre))?\.?/gi, '')
+          .replace(/(?:;\s*|\s*,\s*)?(?:β-|beta-)?hcg\s*(?:negativa|positiva)?\.?/gi, '');
+      }
+      if (!hasHivTestUnlocked) {
+        cleaned = cleaned.replace(
+          /(?:;\s*|\s*,\s*|\s*\.\s*)?prueba\s+de\s+vih\s+(?:negativa|positiva)(?:\s+reciente)?\.?/gi,
+          ''
+        );
+      }
+      return cleaned.replace(/^[\s;,.]+|[\s;]+$/g, '').trim();
+    })
+    .filter((item) => item.length > 0);
 }
 
 export const BackgroundTab: React.FC<BackgroundTabProps> = ({
@@ -47,8 +78,11 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
   onGoToAnamnesis,
   onUnlockEmergencyChart,
   emergencyChartUnlocked = false,
+  unlockedStudyNames = [],
 }) => {
   const { background } = caseData;
+  const safePathological = sanitizeBackgroundItems(background.pathological, unlockedStudyNames);
+  const safeNonPathological = sanitizeBackgroundItems(background.nonPathological, unlockedStudyNames);
   const resolvedDisclosed: DisclosedBackgroundSections = disclosed || {
     pathological: true,
     nonPathological: true,
@@ -107,7 +141,7 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
           </span>
         </div>
         <p className="text-xs sm:text-sm text-[#55685F] leading-relaxed">
-          Los antecedentes se registran progresivamente conforme usted los interroga durante la entrevista clínica (enfermedades previas, hábitos y contactos, familia, cirugías, fármacos actuales y alergias).
+          Los antecedentes se toman estrictamente de lo referido por el paciente durante el interrogatorio clínico en <strong>Anamnesis</strong>, sin adelantar resultados de pruebas o estudios aún no solicitados.
         </p>
         {(() => {
           const weightKg = liveVitals?.weightKg ?? caseData.vitalSigns.weightKg;
@@ -271,9 +305,9 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
           </div>
           {!resolvedDisclosed.pathological ? (
             renderLockedNotice('enfermedades previas o crónicas')
-          ) : background.pathological && background.pathological.length > 0 ? (
+          ) : safePathological.length > 0 ? (
             <ul className="space-y-2 text-xs sm:text-sm text-[#263A32]">
-              {background.pathological.map((item, idx) => (
+              {safePathological.map((item, idx) => (
                 <li key={idx} className="flex items-start gap-2">
                   <span className="text-[#43866B] font-bold">·</span>
                   <span>{item}</span>
@@ -293,9 +327,9 @@ export const BackgroundTab: React.FC<BackgroundTabProps> = ({
           </div>
           {!resolvedDisclosed.nonPathological ? (
             renderLockedNotice('ocupación, hábitos, viajes o contactos')
-          ) : background.nonPathological && background.nonPathological.length > 0 ? (
+          ) : safeNonPathological.length > 0 ? (
             <ul className="space-y-2 text-xs sm:text-sm text-[#263A32]">
-              {background.nonPathological.map((item, idx) => (
+              {safeNonPathological.map((item, idx) => (
                 <li key={idx} className="flex items-start gap-2">
                   <span className="text-[#43866B] font-bold">·</span>
                   <span>{item}</span>
