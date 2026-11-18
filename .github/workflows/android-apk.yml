@@ -1,0 +1,66 @@
+name: Compilar APK Android (Offline)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-android-apk:
+    name: Compilar APK Android con Capacitor y Gradle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependencias de Node.js
+        run: npm ci
+
+      - name: Verificar tipos TypeScript
+        run: npm run lint
+
+      - name: Compilar aplicación web (Vite dist/)
+        run: npm run build
+
+      - name: Sincronizar recursos locales con Capacitor Android
+        run: npx cap sync android
+
+      - name: Configurar Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Configurar Gradle con caché
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Dar permisos de ejecución a gradlew
+        run: chmod +x android/gradlew
+
+      - name: Compilar APK Android instalable (Debug)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verificar archivo APK generado
+        run: ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publicar APK como artefacto descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulador-medico-android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error

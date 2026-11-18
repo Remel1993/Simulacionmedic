@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import {
   Navbar,
   NavSectionKey,
@@ -1427,6 +1429,67 @@ export default function App() {
     setNewCaseModalTab('presets');
     setNewCaseModalOpen(true);
   };
+
+  const androidBackHandlerRef = useRef<() => void>(() => {});
+  androidBackHandlerRef.current = () => {
+    if (pendingExitRequest) {
+      setPendingExitRequest(null);
+      return;
+    }
+    if (immediateDeathAlert) {
+      setImmediateDeathAlert(null);
+      return;
+    }
+    if (pendingOutcome) {
+      setPendingOutcome(null);
+      return;
+    }
+    if (statDrawerOpen) {
+      setStatDrawerOpen(false);
+      return;
+    }
+    if (newCaseModalOpen) {
+      setNewCaseModalOpen(false);
+      return;
+    }
+    if (historyModalOpen) {
+      setHistoryModalOpen(false);
+      return;
+    }
+    if (guideModalOpen) {
+      setGuideModalOpen(false);
+      return;
+    }
+    if (calculatorsModalOpen) {
+      setCalculatorsModalOpen(false);
+      return;
+    }
+    if (activeView !== 'lobby') {
+      requestSafeNavigation('Sí, salir al inicio', () => {
+        if (activeView === 'simulation') {
+          void clearActiveSimulationSession();
+        }
+        setActiveView('lobby');
+      });
+      return;
+    }
+    void CapacitorApp.minimizeApp();
+  };
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listenerHandle: { remove: () => Promise<void> } | null = null;
+    void CapacitorApp.addListener('backButton', () => {
+      androidBackHandlerRef.current();
+    }).then((handle) => {
+      listenerHandle = handle;
+    });
+    return () => {
+      if (listenerHandle) {
+        void listenerHandle.remove();
+      }
+    };
+  }, []);
 
   const isTurnoDark = activeView === 'turno_medico';
 
