@@ -1,3 +1,5 @@
+import type { EvidenceCertaintyTier, KnowledgeValidityStatus } from './knowledge';
+
 export type GameMode = 'principiante' | 'medico_general' | 'residente' | 'urgencias' | 'examen';
 
 export type Specialty =
@@ -111,6 +113,10 @@ export interface ClinicalCaseMetadata {
   frequentErrors: string[];
   educationalDisclaimer: string;
   isCustom?: boolean;
+  guideVersion?: string;
+  regionOrCountry?: string;
+  certaintyTier?: EvidenceCertaintyTier;
+  validityStatus?: KnowledgeValidityStatus;
 }
 
 export interface ClinicalCase {
@@ -205,6 +211,7 @@ export interface StatInterventionAuditItem {
   dose: string;
   route: string;
   verdict: 'adecuado' | 'parcial_o_sin_efecto' | 'riesgo_o_excesivo';
+  effectSeverity?: StatEffectSeverity;
   comment: string;
   deltaSummary: string;
 }
@@ -254,6 +261,67 @@ export interface ProposedMedicationReview {
   matchedReferenceDrug?: string;
   clinicalComment: string;
   posologyNote?: string;
+  pharmacologicalGroup?: string;
+  mechanismOfAction?: string;
+  doseCheckStatus?: 'adecuada' | 'subterapeutica' | 'excesiva' | 'no_evaluable';
+  doseAdjustmentAlert?: string;
+  timingOrIndicationIssue?: string;
+  monitoringPlan?: string;
+  therapeuticAlternatives?: string;
+}
+
+export interface DrugInteractionAlert {
+  pairLabel: string;
+  severity: 'critica' | 'moderada';
+  mechanism: string;
+  clinicalRisk: string;
+  recommendation: string;
+}
+
+export interface PathophysiologyMatrix {
+  cellularAndMolecular: string;
+  anatomicalAndFunctional: string;
+  hemodynamicAndMetabolic: string;
+  inflammatoryAndImmunologic: string;
+  symptomCorrelations: Array<{
+    clinicalFeature: string;
+    causalMechanism: string;
+  }>;
+  labAndImagingCorrelations: Array<{
+    studyName: string;
+    abnormalFinding: string;
+    physiologicalExplanation: string;
+  }>;
+}
+
+export type QualitativeClinicalProbability =
+  | 'Alta probabilidad clínica'
+  | 'Probabilidad intermedia'
+  | 'Baja probabilidad · Descarte crítico'
+  | 'No omitir (riesgo vital)';
+
+export interface DifferentialReasoningMatrixItem {
+  diagnosis: string;
+  qualitativeProbability: QualitativeClinicalProbability;
+  findingsFor: string[];
+  findingsAgainst: string[];
+  confirmatoryWorkup: string;
+}
+
+export interface ValidatedClinicalScaleItem {
+  scaleName: string;
+  validatedPopulation: string;
+  eligibilityStatus: 'aplicable' | 'no_validada_en_poblacion';
+  criteriaSummary: string;
+  clinicalInterpretation: string;
+}
+
+export interface SafetyNonCompensationInfo {
+  applied: boolean;
+  rawUncappedScore: number;
+  cappedMaxScore: number;
+  severity: 'letal' | 'multiple' | 'grave';
+  reason: string;
 }
 
 export interface EvaluationResult {
@@ -309,6 +377,11 @@ export interface EvaluationResult {
   proposedTreatmentReviews?: ProposedMedicationReview[];
   generalMeasuresCritique?: string;
   statAudit?: StatAuditSummary;
+  pathophysiologyMatrix?: PathophysiologyMatrix;
+  differentialMatrix?: DifferentialReasoningMatrixItem[];
+  validatedClinicalScales?: ValidatedClinicalScaleItem[];
+  drugInteractionAlerts?: DrugInteractionAlert[];
+  safetyNonCompensation?: SafetyNonCompensationInfo;
   userSummary?: {
     primaryDiagnosis: string;
     differentialDiagnoses: string[];

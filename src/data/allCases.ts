@@ -40,6 +40,10 @@ function enrichClinicalCaseMetadata(c: ClinicalCase): ClinicalCase {
       frequentErrors,
       educationalDisclaimer: DEFAULT_EDUCATIONAL_DISCLAIMER,
       isCustom: false,
+      guideVersion: 'Base Curada v2026.11.1',
+      regionOrCountry: 'Internacional / Adaptación OPS-LATAM y MINSA Nicaragua',
+      certaintyTier: 'guia_clinica',
+      validityStatus: 'vigente',
     },
   };
 }

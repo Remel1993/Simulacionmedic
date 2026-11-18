@@ -1081,11 +1081,11 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
         /* 3-Column Express Workstation */
         <div className="space-y-3.5">
           {/* Compact Live Vital Signs Telemetry Strip */}
-          <div className="bg-[#121E1A] border border-[#243830] rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_4px_14px_rgba(0,0,0,0.3)]">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
-              <div className="font-bold text-[#E8F2ED] flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-[#68C79F]" />
-                <span>
+          <div className="bg-[#121E1A] border border-[#243830] rounded-xl px-3.5 py-2 min-h-[48px] flex flex-wrap lg:flex-nowrap items-center justify-between gap-2.5 shadow-[0_4px_14px_rgba(0,0,0,0.3)]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs min-w-0 flex-1">
+              <div className="font-bold text-[#E8F2ED] flex items-center gap-1.5 min-w-0">
+                <Users className="w-4 h-4 text-[#68C79F] shrink-0" />
+                <span className="truncate">
                   {activeDraft.caseId === activeCase.id &&
                     `${activeCase.patientInfo.name}, ${activeCase.patientInfo.age}a (${activeCase.patientInfo.sex})${
                       typeof (activeDraft.liveVitalSigns.weightKg ?? activeCase.vitalSigns.weightKg) === 'number'
@@ -1099,7 +1099,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                 </span>
                 {!isDeceased && (
                   <span
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#163026] border border-[#3E8569] text-[10px] font-bold text-[#8FE3BF]"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#163026] border border-[#3E8569] text-[10px] font-bold text-[#8FE3BF] whitespace-nowrap shrink-0"
                     title="Monitoreo continuo en tiempo real"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1107,28 +1107,28 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
                   </span>
                 )}
               </div>
-              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold flex items-center gap-1 transition-colors">
-                <HeartPulse className="w-3.5 h-3.5 text-rose-400" />
-                PA {activeDraft.liveVitalSigns.bloodPressure}
+              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold inline-flex items-center gap-1 whitespace-nowrap min-w-[116px] transition-colors">
+                <HeartPulse className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                PA {activeDraft.liveVitalSigns.bloodPressure.split(' ')[0]}
               </span>
-              <span className="font-mono tabular-nums text-emerald-300 font-semibold flex items-center gap-1 transition-colors">
-                <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-mono tabular-nums text-emerald-300 font-semibold inline-flex items-center gap-1 whitespace-nowrap min-w-[82px] transition-colors">
+                <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 FC {activeDraft.liveVitalSigns.heartRate} lpm
               </span>
-              <span className="font-mono tabular-nums text-sky-300 font-semibold flex items-center gap-1 transition-colors">
-                <Wind className="w-3.5 h-3.5 text-sky-400" />
+              <span className="font-mono tabular-nums text-sky-300 font-semibold inline-flex items-center gap-1 whitespace-nowrap min-w-[116px] transition-colors">
+                <Wind className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                 FR {activeDraft.liveVitalSigns.respiratoryRate} · SpO₂ {activeDraft.liveVitalSigns.oxygenSaturation}%
               </span>
-              <span className="font-mono tabular-nums text-amber-300 font-semibold flex items-center gap-1 transition-colors">
-                <Thermometer className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-mono tabular-nums text-amber-300 font-semibold inline-flex items-center gap-1 whitespace-nowrap min-w-[78px] transition-colors">
+                <Thermometer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 T° {activeDraft.liveVitalSigns.temperature.toFixed(1)}°C
               </span>
-              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold flex items-center gap-1 transition-colors">
-                <Brain className="w-3.5 h-3.5 text-[#68C79F]" />
+              <span className="font-mono tabular-nums text-[#E8F2ED] font-semibold inline-flex items-center gap-1 whitespace-nowrap min-w-[74px] transition-colors">
+                <Brain className="w-3.5 h-3.5 text-[#68C79F] shrink-0" />
                 GCS {activeDraft.liveVitalSigns.glasgow}/15
               </span>
               {activeDraft.liveVitalSigns.bloodGlucose !== undefined && (
-                <span className="font-mono tabular-nums text-amber-200 font-semibold">
+                <span className="font-mono tabular-nums text-amber-200 font-semibold whitespace-nowrap min-w-[88px]">
                   Glu {activeDraft.liveVitalSigns.bloodGlucose} mg/dL
                 </span>
               )}
@@ -1136,7 +1136,7 @@ export const TurnoMedicoView: React.FC<TurnoMedicoViewProps> = ({
 
             {activeDraft.evolutionState?.trajectory && (
               <span
-                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border whitespace-nowrap shrink-0 min-w-[128px] text-center ${
                   activeDraft.evolutionState.trajectory === 'mejorando'
                     ? 'bg-emerald-950/75 border-emerald-700/70 text-emerald-200'
                     : activeDraft.evolutionState.trajectory === 'critico' ||

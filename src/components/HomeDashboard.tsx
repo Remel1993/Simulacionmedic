@@ -9,6 +9,8 @@ import {
 } from '../types/clinical';
 import { ALL_CURATED_CASES } from '../data/allCases';
 import { HospitalSelect } from './HospitalSelect';
+import { KNOWLEDGE_BASE_DATE, KNOWLEDGE_BASE_VERSION } from '../knowledge/clinicalKnowledgeBase';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import {
   Stethoscope,
   Sparkles,
@@ -152,6 +154,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onStartNextUnseen,
   onRetryCase,
 }) => {
+  const isOnline = useOnlineStatus();
   const [classification, setClassification] = useState<ClassificationKey>(
     externalClassification ?? initialMode
   );
@@ -503,10 +506,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
       </section>
 
-      {/* Quiet Offline Disclaimer Footer */}
+      {/* Quiet Offline & Knowledge Base Version Footer */}
       <footer className="rounded-2xl border border-[#E2EAE4] bg-white px-4 py-3 text-xs text-[#55685F] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <span>
-          <strong className="text-[#43866B]">Motor Clínico 100 % Offline:</strong> Funciona sin internet y guarda tu progreso localmente.
+          <strong className="text-[#43866B]">Motor Clínico Offline · Base Científica v{KNOWLEDGE_BASE_VERSION}</strong>{' '}
+          (verif. {KNOWLEDGE_BASE_DATE})
+          {!isOnline && ' · Sin conexión: actualización remota no comprobada.'}
         </span>
         <span className="text-[#718078]">
           Uso exclusivamente educativo; no sustituye el juicio clínico ni los protocolos vigentes.

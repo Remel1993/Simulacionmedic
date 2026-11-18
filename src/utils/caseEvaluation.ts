@@ -5,6 +5,7 @@ import {
   ProposedMedicationReview,
   ProposedMedicationVerdict,
   RubricCategoryDetail,
+  SafetyNonCompensationInfo,
   StatAuditSummary,
   StatInterventionAuditItem,
   StatReferenceProtocolItem,
@@ -12,6 +13,15 @@ import {
   VitalSigns,
 } from '../types/clinical';
 import { auditMedicationPlanSafety } from './statStabilization';
+import {
+  auditMedicationPharmacology,
+  detectPlanDrugInteractions,
+} from './pharmacologyEngine';
+import {
+  buildDeepPathophysiologyMatrix,
+  buildDifferentialReasoningMatrix,
+  selectValidatedClinicalScales,
+} from './pathophysiologyEngine';
 
 function normStr(s: string): string {
   return (s || '')
@@ -859,6 +869,20 @@ function checkCriticalSafetyErrors(
     }
   }
 
+  // 25. Interacciones farmacológicas críticas (entre fármacos prescritos y medicación crónica habitual)
+  const interactionAlerts = detectPlanDrugInteractions(
+    submission.pharmacologicalPlan || [],
+    caseData
+  );
+  for (const inter of interactionAlerts) {
+    if (inter.severity === 'critica') {
+      const msg = `¡ERROR CRÍTICO POR INTERACCIÓN FARMACOLÓGICA!: ${inter.pairLabel} — ${inter.clinicalRisk}`;
+      if (!errors.some((e) => normStr(e).includes(normStr(inter.pairLabel).slice(0, 18)))) {
+        errors.push(msg);
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -1102,11 +1126,19 @@ const THERAPEUTIC_EQUIVALENCE_GROUPS: TherapeuticEquivalenceGroup[] = [
     label: 'Terapia de Reperfusión / Trombólisis (Estreptoquinasa / Alteplasa / ICP)',
     note: 'Reperfusión coronaria o trombólisis disponible según nivel resolutivo',
     terms: ['alteplasa', 'tenecteplasa', 'estreptoquinasa', 'trombolisis', 'fibrinolisis', 'angioplastia', 'icp'],
+    excludeIfDiag: /iamsest|scasest|angina|diseccion aortica|hemorragia|takotsubo/,
   },
   {
-    label: 'Analgésicos Opioides / Rescate de Dolor Severo',
-    note: 'Opioide titulado equivalente',
-    terms: ['tramadol', 'buprenorfina', 'morfina', 'fentanilo'],
+    label: 'Analgésicos Opioides Potentes IV / Dolor Agudo Severo',
+    note: 'Opioide potente titulado IV (Morfina / Fentanilo / Buprenorfina)',
+    terms: ['morfina', 'fentanilo', 'buprenorfina'],
+    excludeIfDiag: /edema agudo.*pulmon|insuficiencia cardiaca.*descompensada|asma|epoc/,
+  },
+  {
+    label: 'Analgésicos Opioides Débiles (Tramadol)',
+    note: 'Opioide débil aceptado en dolor osteomuscular o cólico moderado sin emergencia cardiovascular',
+    terms: ['tramadol', 'buprenorfina'],
+    onlyIfDiag: /lumbalgia|fractura|colico|radiculopatia|zoster|esguince|pancreatitis/,
   },
   {
     label: 'Soluciones Glucosadas (Dextrosa)',
@@ -1148,7 +1180,7 @@ const THERAPEUTIC_EQUIVALENCE_GROUPS: TherapeuticEquivalenceGroup[] = [
     label: 'Betabloqueadores Cardioselectivos / Falla Cardíaca',
     note: 'Betabloqueador equivalente según ficha terapéutica',
     terms: ['metoprolol', 'bisoprolol', 'carvedilol', 'atenolol', 'nebivolol'],
-    excludeIfDiag: /asma|epoc/,
+    excludeIfDiag: /asma|epoc|edema agudo.*pulmon|choque cardiogenico|bloqueo av|bloqueo auriculoventricular|feocromocitoma/,
   },
   {
     label: 'Estatinas de Alta/Moderada Intensidad',
@@ -1174,17 +1206,19 @@ const THERAPEUTIC_EQUIVALENCE_GROUPS: TherapeuticEquivalenceGroup[] = [
     label: 'Corticoides Sistémicos (Prednisona / Hidrocortisona / Dexametasona)',
     note: 'Corticoide sistémico equivalente según vía (Prednisona VO / Hidrocortisona o Dexametasona IV)',
     terms: ['prednisona', 'prednisolona', 'hidrocortisona', 'metilprednisolona', 'dexametasona'],
-    excludeIfDiag: /tina|tinea|dermatofitosis|dengue/,
+    excludeIfDiag: /tina|tinea|dermatofitosis|dengue|bronquiolitis|queratitis herpetica|artritis septica|hemorragia digestiva|ulcera peptica/,
   },
   {
     label: 'Broncodilatadores SABA / Rescate (Salbutamol LBM MINSA)',
     note: 'Broncodilatador inhalado equivalente',
     terms: ['salbutamol', 'albuterol', 'fenoterol', 'ipratropio', 'bromuro de ipratropio'],
+    excludeIfDiag: /bronquiolitis|crup|laringotraqueobronquitis/,
   },
   {
-    label: 'Antieméticos / Procinéticos',
-    note: 'Antiemético equivalente (Metoclopramida LBM MINSA / Ondansetrón / Dimenhidrinato)',
-    terms: ['metoclopramida', 'ondansetron', 'domperidona', 'dimenhidrinato'],
+    label: 'Antieméticos Antagonistas 5-HT3 / Dopaminérgicos (Ondansetrón / Metoclopramida)',
+    note: 'Antiemético equivalente para náuseas y vómitos sin obstrucción ni sangrado digestivo (Ondansetrón / Metoclopramida / Domperidona)',
+    terms: ['metoclopramida', 'ondansetron', 'domperidona'],
+    excludeIfDiag: /hemorragia digestiva|ulcera peptica|obstruccion intestinal|parkinson|vertigo/,
   },
   {
     label: 'Antiespasmódicos (Butilhioscina / Hioscina)',
@@ -1240,10 +1274,17 @@ const THERAPEUTIC_EQUIVALENCE_GROUPS: TherapeuticEquivalenceGroup[] = [
     terms: ['metronidazol', 'tinidazol', 'secnidazol'],
   },
   {
-    label: 'Antihipertensivos en Preeclampsia / Obstetricia (Normativa MINSA)',
-    note: 'Antihipertensivo seguro en embarazo/preeclampsia (Hidralazina, Labetalol, Nifedipino, Alfametildopa)',
-    terms: ['labetalol', 'hidralazina', 'nifedipino', 'alfametildopa', 'metildopa'],
-    onlyIfDiag: /preeclampsia|eclampsia|embarazo|gestacional/,
+    label: 'Antihipertensivos de Crisis en Preeclampsia Severa / Eclampsia (Normativa MINSA)',
+    note: 'Antihipertensivo de acción aguda seguro en embarazo/preeclampsia severa (Hidralazina IV, Labetalol IV, Nifedipino oral de liberación inmediata)',
+    terms: ['labetalol', 'hidralazina', 'nifedipino'],
+    onlyIfDiag: /preeclampsia|eclampsia|embarazo/,
+  },
+  {
+    label: 'Antihipertensivos de Mantenimiento Obstétrico (Alfametildopa)',
+    note: 'Alfametildopa es útil en hipertensión gestacional o preeclampsia sin severidad, no como rescate agudo de crisis hipertensiva',
+    terms: ['labetalol', 'nifedipino', 'alfametildopa', 'metildopa'],
+    onlyIfDiag: /hipertension gestacional|preeclampsia leve/,
+    excludeIfDiag: /preeclampsia.*sever|eclampsia/,
   },
   {
     label: 'Sulfato de Magnesio (MgSO4)',
@@ -1473,7 +1514,7 @@ const MEDICATION_CLASS_PROFILES: MedicationClassProfile[] = [
     classLabel: 'Broncodilatador adrenérgico / anticolinérgico',
     pattern: /\b(salbutamol|albuterol|fenoterol|ipratropio|tiotropio|salmeterol|formoterol|budesonida|beclometasona)\b/,
     mechanism: 'broncodilatación o control de inflamación de vía aérea',
-    symptomaticContexts: /asma|epoc|bronquitis|sibilanc|broncoespasmo|bronquiolitis|crup|anafilax/,
+    symptomaticContexts: /asma|epoc|bronquitis|sibilanc|broncoespasmo|anafilax/,
   },
   {
     id: 'antitusigenos_mucoliticos',
@@ -1725,6 +1766,17 @@ function evaluateProposedMedications(
         ? `Posología completa registrada (${doseSummary}).`
         : `Posología incompleta: faltó precisar ${missingPosology.join(', ')}.`;
 
+    const pharmaAudit = auditMedicationPharmacology(item, caseData, userRx);
+    const pharmaExtras = {
+      pharmacologicalGroup: pharmaAudit.pharmacologicalGroup,
+      mechanismOfAction: pharmaAudit.mechanismOfAction,
+      doseCheckStatus: pharmaAudit.doseCheckStatus,
+      doseAdjustmentAlert: pharmaAudit.doseAdjustmentAlert,
+      timingOrIndicationIssue: pharmaAudit.timingOrIndicationIssue,
+      monitoringPlan: pharmaAudit.monitoringPlan,
+      therapeuticAlternatives: pharmaAudit.therapeuticAlternatives,
+    };
+
     const rawJoined = `${item.drug || ''} ${item.dose || ''} ${item.route || ''}`;
     const activeClean = stripNegatedMedicationClauses(rawJoined);
 
@@ -1741,6 +1793,7 @@ function evaluateProposedMedications(
           matchedReferenceDrug: negatedTarget.drug,
           clinicalComment: `Indicaste suspender o evitar "${drugLabel}", pero este medicamento forma parte del esquema indicado (${negatedTarget.drug}): ${negatedTarget.rationale}`,
           posologyNote,
+          ...pharmaExtras,
         };
       }
       return {
@@ -1751,6 +1804,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Medida de retiro segura',
         clinicalComment: `Indicaste suspender o evitar "${drugLabel}", una medida de seguridad válida para prevenir interacciones o agravamiento iatrogénico.`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1765,6 +1819,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Riesgoso / Contraindicado',
         clinicalComment: safetyIssue,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1793,6 +1848,45 @@ function evaluateProposedMedications(
           : '';
       posologyNote = `${posologyNote} ${expectedPosologyRef}${routeMismatchNote}`;
 
+      const isUrgentSetting =
+        caseData.mode === 'urgencias' || /\bNivel\s+(?:I|II)\b/.test(caseData.patientInfo?.triageLevel || '');
+      const expectsAcuteParenteralOrInhaled =
+        /\b(intravenosa|intramuscular|inhalat|nebuliz|sublingual)\b/.test(normStr(rx.route || '')) &&
+        !/\boral\b/.test(normStr(rx.route || ''));
+      const userChoseOral = /\b(oral|\bvo\b)\b/.test(normStr(item.route || ''));
+      const isRouteCriticalAcuteDrug =
+        /\b(labetalol|hidralazina|nitroprusiato|nicardipino|furosemida|adrenalina|epinefrina|insulina|amiodarona|adenosina|atropina|hidrocortisona|magnesio|mgso4|ceftriaxona|cefotaxima|norepinefrina|nitroglicerina)\b/.test(
+          itemNorm
+        );
+
+      if (isUrgentSetting && expectsAcuteParenteralOrInhaled && userChoseOral && isRouteCriticalAcuteDrug) {
+        return {
+          id: item.id,
+          drug: drugLabel,
+          doseSummary,
+          verdict: 'diferente_o_suboptimo',
+          verdictLabel: 'Vía inadecuada para urgencia',
+          matchedReferenceDrug: rx.drug,
+          clinicalComment: `Elegiste el principio activo correcto (${item.drug}), pero la vía ${item.route} presenta absorción y latencia inadecuadas en urgencia aguda; en este escenario crítico se requiere vía ${rx.route} (${rx.rationale}).`,
+          posologyNote,
+          ...pharmaExtras,
+        };
+      }
+
+      if (pharmaAudit.timingOrIndicationIssue) {
+        return {
+          id: item.id,
+          drug: drugLabel,
+          doseSummary,
+          verdict: 'diferente_o_suboptimo',
+          verdictLabel: 'Momento o secuencia inadecuada',
+          matchedReferenceDrug: rx.drug,
+          clinicalComment: `${pharmaAudit.timingOrIndicationIssue} Fundamento de referencia (${rx.drug}): ${rx.rationale}`,
+          posologyNote,
+          ...pharmaExtras,
+        };
+      }
+
       if (isAmoxiWithoutClav) {
         return {
           id: item.id,
@@ -1803,6 +1897,7 @@ function evaluateProposedMedications(
           matchedReferenceDrug: rx.drug,
           clinicalComment: `Propusiste Amoxicilina simple, que pertenece a la misma familia que la referencia (${rx.drug}), aunque sin Ácido Clavulánico tiene menor cobertura frente a bacterias productoras de betalactamasas (H. influenzae, M. catarrhalis). En el caso esperado: ${rx.rationale}`,
           posologyNote,
+          ...pharmaExtras,
         };
       }
 
@@ -1816,6 +1911,7 @@ function evaluateProposedMedications(
           matchedReferenceDrug: rx.drug,
           clinicalComment: `Propusiste "${drugLabel}", que difiere levemente del fármaco literal de referencia (${rx.drug}), pero es farmacológicamente equivalente: ${matchRes.equivalentNote} Cumple el objetivo: ${rx.rationale}`,
           posologyNote,
+          ...pharmaExtras,
         };
       }
 
@@ -1832,6 +1928,24 @@ function evaluateProposedMedications(
           matchedReferenceDrug: rx.drug,
           clinicalComment: `Propusiste "${drugLabel}", opción reconocida dentro de las alternativas del esquema de referencia (${rx.drug}). Fundamento clínico: ${rx.rationale}`,
           posologyNote,
+          ...pharmaExtras,
+        };
+      }
+
+      if (pharmaAudit.doseCheckStatus === 'subterapeutica' || pharmaAudit.doseCheckStatus === 'excesiva') {
+        return {
+          id: item.id,
+          drug: drugLabel,
+          doseSummary,
+          verdict: 'alternativa_valida',
+          verdictLabel:
+            pharmaAudit.doseCheckStatus === 'excesiva'
+              ? 'Fármaco correcto · Dosis alta'
+              : 'Fármaco correcto · Dosis baja',
+          matchedReferenceDrug: rx.drug,
+          clinicalComment: `Elegiste el fármaco de primera línea (${rx.drug}), pero la dosis indicada requiere corrección: ${pharmaAudit.doseAdjustmentAlert || 'verificar posología exacta'}. Rol terapéutico: ${rx.rationale}`,
+          posologyNote,
+          ...pharmaExtras,
         };
       }
 
@@ -1844,6 +1958,7 @@ function evaluateProposedMedications(
         matchedReferenceDrug: rx.drug,
         clinicalComment: `Coincide con el esquema de primera línea esperado (${rx.drug}). Rol terapéutico en este paciente: ${rx.rationale}`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1860,6 +1975,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Antibiótico no indicado',
         clinicalComment: `Propusiste "${drugLabel}" (${profile?.classLabel || 'antibiótico sistémico'}), pero ${solution.correctDiagnosis} tiene origen no bacteriano (viral, inflamatorio o mecánico). Las guías MINSA/OMS recomiendan evitar antibióticos empíricos innecesarios y centrarse en: ${optNamesShort}.`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1875,6 +1991,7 @@ function evaluateProposedMedications(
           matchedReferenceDrug: optAbx.drug,
           clinicalComment: `Propusiste "${drugLabel}" (${profile?.classLabel || 'antimicrobiano'}), un antibiótico de espectro o generación distinta al esquema de primera línea para este foco (${optAbx.drug}). Aunque busca cobertura infecciosa, evalúa sensibilidad local, cobertura de patógenos clave y penetración tisular (${optAbx.rationale}).`,
           posologyNote: `${posologyNote} Esquema de primera línea sugerido: ${optAbx.drug} ${optAbx.dose} (${optAbx.route}, ${optAbx.frequency}, Duración: ${optAbx.duration}).`,
+          ...pharmaExtras,
         };
       }
       return {
@@ -1885,6 +2002,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Antimicrobiano fuera de esquema',
         clinicalComment: `Propusiste "${drugLabel}" (${profile?.classLabel || 'antimicrobiano'}), pero el manejo prioritario para ${solution.correctDiagnosis} no contempla este antibiótico (${optNamesShort}).`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1897,6 +2015,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Coadyuvante sintomático / Soporte',
         clinicalComment: `Propusiste "${drugLabel}" (${profile.classLabel}), un apoyo razonable para ${profile.mechanism} según la clínica del paciente; sin embargo, no sustituye los pilares etiológicos esperados (${optNamesShort}).`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1909,6 +2028,7 @@ function evaluateProposedMedications(
         verdictLabel: 'Fármaco diferente al esquema',
         clinicalComment: `Propusiste "${drugLabel}" (${profile.classLabel}, orientado a ${profile.mechanism}). Este grupo terapéutico difiere del manejo prioritario para ${solution.correctDiagnosis}, donde las guías indican: ${optNamesShort}.`,
         posologyNote,
+        ...pharmaExtras,
       };
     }
 
@@ -1920,6 +2040,7 @@ function evaluateProposedMedications(
       verdictLabel: 'Fuera del esquema de referencia',
       clinicalComment: `Indicaste "${drugLabel}", pero no coincide con los principios activos ni equivalentes aceptados para ${solution.correctDiagnosis} (${optNamesShort}). Verifica si existe un nombre genérico alternativo o si la indicación no corresponde al diagnóstico definitivo.`,
       posologyNote,
+      ...pharmaExtras,
     };
   });
 }
@@ -2685,6 +2806,7 @@ export function buildDidacticEvaluation(
         dose: rec.dose,
         route: rec.route,
         verdict: 'riesgo_o_excesivo',
+        effectSeverity: rec.effectSeverity,
         comment: rec.physiologicalEffectSummary,
         deltaSummary,
       };
@@ -2695,6 +2817,7 @@ export function buildDidacticEvaluation(
         dose: rec.dose,
         route: rec.route,
         verdict: 'adecuado',
+        effectSeverity: rec.effectSeverity,
         comment: rec.physiologicalEffectSummary,
         deltaSummary,
       };
@@ -2705,6 +2828,7 @@ export function buildDidacticEvaluation(
         dose: rec.dose,
         route: rec.route,
         verdict: 'parcial_o_sin_efecto',
+        effectSeverity: rec.effectSeverity,
         comment: rec.physiologicalEffectSummary,
         deltaSummary,
       };
@@ -2714,6 +2838,7 @@ export function buildDidacticEvaluation(
       dose: rec.dose,
       route: rec.route,
       verdict: 'parcial_o_sin_efecto',
+      effectSeverity: rec.effectSeverity,
       comment: rec.physiologicalEffectSummary,
       deltaSummary,
     };
@@ -2721,6 +2846,7 @@ export function buildDidacticEvaluation(
 
   const adverseStatEvents = interventionReviews.filter((r) => r.verdict === 'riesgo_o_excesivo');
   const positiveStatEvents = interventionReviews.filter((r) => r.verdict === 'adecuado');
+  const irrelevantStatEvents = interventionReviews.filter((r) => r.effectSeverity === 'sin_cambio');
 
   for (const adv of adverseStatEvents) {
     const commentNorm = normStr(adv.comment);
@@ -2809,17 +2935,21 @@ export function buildDidacticEvaluation(
     statNarrative = `Se aplicaron ${statList.length} intervención(es) STAT, pero ${adverseStatEvents.length} produjo deterioro fisiológico o evento adverso por dosis excesiva o contraindicación.`;
   } else if (statList.length > 0) {
     if (positiveStatEvents.length > 0 || (matchedStatDrugs.length > 0 && missedStatDrugs.length === 0)) {
-      statOverallVerdict = missedStatDrugs.length === 0 ? 'optimo' : 'parcial';
-      statNarrative =
-        missedStatDrugs.length === 0
-          ? `Estabilización STAT oportuna (${statList.length} dosis aplicadas) con respuesta fisiológica favorable y sin iatrogenia.`
-          : `Se aplicaron ${statList.length} dosis STAT con mejoría clínica, aunque quedó pendiente completar en Urgencias: ${missedStatDrugs.slice(0, 2).join('; ')}.`;
-      if (treatScore > 0 && treatScore < 15 && matchedDrugs.length > 0) {
+      statOverallVerdict =
+        missedStatDrugs.length === 0 && irrelevantStatEvents.length === 0 ? 'optimo' : 'parcial';
+      if (missedStatDrugs.length === 0 && irrelevantStatEvents.length === 0) {
+        statNarrative = `Estabilización STAT oportuna (${statList.length} dosis aplicadas) con respuesta fisiológica favorable y sin iatrogenia.`;
+      } else if (missedStatDrugs.length === 0 && irrelevantStatEvents.length > 0) {
+        statNarrative = `Cubriste la estabilización prioritaria, pero aplicaste ${irrelevantStatEvents.length} intervención(es) STAT sin indicación fisiopatológica aguda (evita tratar el monitor o prescribir fármacos fútiles).`;
+      } else {
+        statNarrative = `Se aplicaron ${statList.length} dosis STAT con mejoría parcial, quedando pendiente en Urgencias: ${missedStatDrugs.slice(0, 2).join('; ')}${irrelevantStatEvents.length > 0 ? ` (además de ${irrelevantStatEvents.length} fármaco(s) sin indicación aguda)` : ''}.`;
+      }
+      if (treatScore > 0 && treatScore < 15 && matchedDrugs.length > 0 && irrelevantStatEvents.length === 0) {
         treatScore = Math.min(15, treatScore + 1);
       }
     } else {
       statOverallVerdict = 'parcial';
-      statNarrative = `Se administraron ${statList.length} intervención(es) STAT, aunque sin impacto relevante sobre la alteración fisiológica prioritaria.`;
+      statNarrative = `Se administraron ${statList.length} intervención(es) STAT, aunque sin impacto relevante sobre la alteración fisiológica prioritaria (recuerda tratar la fisiopatología de base y no el monitor).`;
     }
   } else if (requiresUrgentStat && matchedStatDrugs.length > 0) {
     statOverallVerdict = missedStatDrugs.length === 0 ? 'optimo' : 'parcial';
@@ -2919,6 +3049,25 @@ export function buildDidacticEvaluation(
     caseData,
     nonBacterialCase
   );
+  const drugInteractionAlerts = detectPlanDrugInteractions(userRx, caseData);
+
+  // Penalización posológica / de momento clínico cuando un fármaco acertado tiene dosis inadecuada o secuencia incorrecta
+  const doseOrTimingPenaltyCount = proposedTreatmentReviews.filter(
+    (r) =>
+      r.verdict !== 'riesgoso_o_contraindicado' &&
+      (r.doseCheckStatus === 'subterapeutica' ||
+        r.doseCheckStatus === 'excesiva' ||
+        Boolean(r.timingOrIndicationIssue))
+  ).length;
+  const moderateInteractionCount = drugInteractionAlerts.filter((a) => a.severity === 'moderada').length;
+  if (treatScore > 0 && (doseOrTimingPenaltyCount > 0 || moderateInteractionCount > 0)) {
+    const deduction = Math.min(3, doseOrTimingPenaltyCount + moderateInteractionCount);
+    treatScore = Math.max(0, treatScore - deduction);
+  }
+  if (criticalSafetyErrors.length > 0) {
+    treatScore = Math.min(treatScore, 3);
+  }
+
   const generalMeasuresCritique = evaluateGeneralMeasuresCritique(
     submission.generalMeasures || '',
     solution.optimalTreatment?.generalMeasures || []
@@ -2960,6 +3109,9 @@ export function buildDidacticEvaluation(
         : []),
       ...missedDrugs.map((d) => `Faltó indicar según esquema de referencia: ${d}`),
       ...adverseStatEvents.map((a) => `Dosis o fármaco STAT riesgoso (${a.drug} ${a.dose}): ${a.comment}`),
+      ...irrelevantStatEvents.map(
+        (ir) => `Fármaco STAT sin indicación fisiopatológica (${ir.drug} ${ir.dose}): ${ir.comment}`
+      ),
       ...(rationalAntibioticStatus === 'alerta' && nonBacterialCase ? [rationalAntibioticNote] : []),
       ...pharmacologyNotes,
       ...(userRx.length > 0 && completeRxCount < userRx.length
@@ -3234,16 +3386,26 @@ export function buildDidacticEvaluation(
       Math.round(((anamScore + examScore + studyScore + diagScore + treatScore + safetyScore) / 90) * 100)
     )
   );
-  const totalScore = isExpressDiagOnly
-    ? finalCriticalErrors.length > 0
-      ? Math.min(expressNormalizedScore, 45)
-      : expressNormalizedScore
+  const rawUncappedScore = isExpressDiagOnly
+    ? expressNormalizedScore
     : !isEcoeMode
       ? standardNonEcoeNormalizedScore
       : Math.min(
           100,
           anamScore + examScore + studyScore + diagScore + diffScore + treatScore + safetyScore
         );
+
+  const nonCompResult = applySafetyNonCompensationPolicy(
+    rawUncappedScore,
+    finalCriticalErrors,
+    caseData,
+    statOverallVerdict === 'riesgo_critico' || Boolean(immediateDeathRecord)
+  );
+  const totalScore = isExpressDiagOnly
+    ? finalCriticalErrors.length > 0
+      ? Math.min(nonCompResult.totalScore, 45)
+      : nonCompResult.totalScore
+    : nonCompResult.totalScore;
 
   let classification: EvaluationResult['classification'] = 'Buen desempeño';
   if (totalScore >= 90) classification = 'Excelente razonamiento clínico';
@@ -3258,6 +3420,10 @@ export function buildDidacticEvaluation(
       (solution.criticalRulingOutFactors && solution.criticalRulingOutFactors[i]) ||
       `Aunque comparte síntomas iniciales con el motivo de consulta, la exploración física dirigida y los estudios paraclínicos orientan a favor de ${solution.correctDiagnosis} y permiten descartar ${diff}.`,
   }));
+
+  const pathophysiologyMatrix = buildDeepPathophysiologyMatrix(caseData);
+  const differentialMatrix = buildDifferentialReasoningMatrix(caseData);
+  const validatedClinicalScales = selectValidatedClinicalScales(caseData);
 
   return {
     totalScore,
@@ -3344,6 +3510,11 @@ export function buildDidacticEvaluation(
       ? `Medidas de referencia: ${(solution.optimalTreatment?.generalMeasures || []).slice(0, 3).join(' · ')}`
       : generalMeasuresCritique,
     statAudit,
+    pathophysiologyMatrix,
+    differentialMatrix,
+    validatedClinicalScales,
+    drugInteractionAlerts: drugInteractionAlerts.length > 0 ? drugInteractionAlerts : undefined,
+    safetyNonCompensation: nonCompResult.safetyNonCompensation,
     userSummary: {
       primaryDiagnosis: submission.primaryDiagnosis || 'Sin diagnóstico registrado',
       differentialDiagnoses: userDiffs,
@@ -3363,6 +3534,69 @@ export function buildDidacticEvaluation(
     },
     expressDiagnosticOnly: isExpressDiagOnly,
     resolvedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Regla de No Compensación por Seguridad del Paciente:
+ * Un puntaje alto en anamnesis o diagnóstico no puede compensar una conducta peligrosa o potencialmente letal.
+ */
+function applySafetyNonCompensationPolicy(
+  rawUncappedScore: number,
+  criticalErrors: string[],
+  caseData: ClinicalCase,
+  hasSevereStatRisk: boolean
+): { totalScore: number; safetyNonCompensation?: SafetyNonCompensationInfo } {
+  if (criticalErrors.length === 0 && !hasSevereStatRisk) {
+    return { totalScore: rawUncappedScore };
+  }
+
+  const hasLethal =
+    hasSevereStatRisk || criticalErrors.some((err) => isLethalSafetyError(err, caseData));
+
+  if (hasLethal) {
+    const capped = Math.min(rawUncappedScore, 39);
+    return {
+      totalScore: capped,
+      safetyNonCompensation: {
+        applied: true,
+        rawUncappedScore,
+        cappedMaxScore: 39,
+        severity: 'letal',
+        reason:
+          'Regla de No Compensación por Seguridad: se detectó al menos un error crítico potencialmente mortal o evento adverso STAT grave; la calificación global queda limitada a ≤39/100 sin importar el acierto diagnóstico.',
+      },
+    };
+  }
+
+  if (criticalErrors.length >= 2) {
+    const penalized = Math.max(0, rawUncappedScore - 20);
+    const capped = Math.min(penalized, 45);
+    return {
+      totalScore: capped,
+      safetyNonCompensation: {
+        applied: true,
+        rawUncappedScore,
+        cappedMaxScore: 45,
+        severity: 'multiple',
+        reason:
+          'Regla de No Compensación por Seguridad: múltiples errores críticos de seguridad (-20 pts y tope máximo 45/100) impiden aprobar el caso mediante otros apartados.',
+      },
+    };
+  }
+
+  const penalized = Math.max(0, rawUncappedScore - 15);
+  const capped = Math.min(penalized, 58);
+  return {
+    totalScore: capped,
+    safetyNonCompensation: {
+      applied: true,
+      rawUncappedScore,
+      cappedMaxScore: 58,
+      severity: 'grave',
+      reason:
+        'Regla de No Compensación por Seguridad: un error crítico de seguridad (-15 pts y tope máximo 58/100) impide compensar el riesgo clínico con un buen puntaje en diagnóstico o anamnesis.',
+    },
   };
 }
 
@@ -3480,11 +3714,28 @@ export function enrichEvaluationWithDidactics(
   const mergedCritical = Array.from(
     new Set([...sanitizedAiCritical, ...baseline.criticalSafetyErrors])
   );
+  const nonCompMerged = applySafetyNonCompensationPolicy(
+    sumScore,
+    mergedCritical,
+    caseData,
+    baseline.statAudit?.overallVerdict === 'riesgo_critico' || Boolean(baseline.statAudit?.immediateDeathReason)
+  );
+  const finalTotalScore = isExpressDiagOnly
+    ? mergedCritical.length > 0
+      ? Math.min(nonCompMerged.totalScore, 45)
+      : nonCompMerged.totalScore
+    : nonCompMerged.totalScore;
+
+  if (finalTotalScore >= 90) classification = 'Excelente razonamiento clínico';
+  else if (finalTotalScore >= 80) classification = 'Muy buen desempeño';
+  else if (finalTotalScore >= 70) classification = 'Buen desempeño';
+  else if (finalTotalScore >= 60) classification = 'Necesita reforzar conocimientos';
+  else classification = 'Necesita mejorar su abordaje clínico';
 
   return {
     ...baseline,
     ...aiEval,
-    totalScore: sumScore,
+    totalScore: finalTotalScore,
     classification,
     breakdown: mergedBreakdown,
     criticalSafetyErrors: mergedCritical,
@@ -3514,6 +3765,11 @@ export function enrichEvaluationWithDidactics(
     proposedTreatmentReviews: baseline.proposedTreatmentReviews,
     generalMeasuresCritique: baseline.generalMeasuresCritique,
     statAudit: baseline.statAudit,
+    pathophysiologyMatrix: baseline.pathophysiologyMatrix,
+    differentialMatrix: baseline.differentialMatrix,
+    validatedClinicalScales: baseline.validatedClinicalScales,
+    drugInteractionAlerts: baseline.drugInteractionAlerts,
+    safetyNonCompensation: nonCompMerged.safetyNonCompensation,
     userSummary: baseline.userSummary,
     feedback: {
       diagnosisAccuracyComment: aiEval.feedback?.diagnosisAccuracyComment || baseline.feedback.diagnosisAccuracyComment,

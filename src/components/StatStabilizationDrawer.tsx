@@ -551,6 +551,8 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                   {[...statInterventions].reverse().map((rec) => {
                     const isAdverse = rec.effectSeverity === 'reaccion_adversa';
                     const isImproved = rec.effectSeverity === 'mejoria';
+                    const isPartial = rec.effectSeverity === 'parcial';
+                    const isNoEffect = rec.effectSeverity === 'sin_cambio';
                     return (
                       <div
                         key={rec.id}
@@ -559,7 +561,9 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                             ? 'bg-rose-50 border-rose-300'
                             : isImproved
                             ? 'bg-[#E4F1E8]/60 border-[#72A98A]'
-                            : 'bg-[#F8FBF9] border-[#E2EAE4]'
+                            : isPartial
+                            ? 'bg-sky-50/70 border-sky-200'
+                            : 'bg-amber-50/70 border-amber-200'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -568,8 +572,10 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                               <AlertTriangle className="w-3.5 h-3.5 text-rose-700 shrink-0" />
                             ) : isImproved ? (
                               <CheckCircle2 className="w-3.5 h-3.5 text-[#43866B] shrink-0" />
-                            ) : (
+                            ) : isPartial ? (
                               <Activity className="w-3.5 h-3.5 text-sky-700 shrink-0" />
+                            ) : (
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                             )}
                             <span className="truncate">
                               {rec.drug} · {rec.dose}
@@ -577,6 +583,29 @@ export const StatStabilizationDrawer: React.FC<StatStabilizationDrawerProps> = (
                           </span>
                           <span className="text-[10px] font-mono tabular-nums text-[#718078] shrink-0">
                             {rec.appliedAt}
+                          </span>
+                        </div>
+                        <div>
+                          <span
+                            className={`inline-block px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
+                              isAdverse
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : isImproved
+                                ? 'bg-[#E4F1E8] text-[#1F4B3A] border-[#72A98A]'
+                                : isPartial
+                                ? 'bg-sky-100 text-sky-900 border-sky-200'
+                                : isNoEffect
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-slate-100 text-slate-800 border-slate-200'
+                            }`}
+                          >
+                            {isAdverse
+                              ? 'Iatrogenia / Contraindicado'
+                              : isImproved
+                              ? 'Adecuado · Fisiopatológico'
+                              : isPartial
+                              ? 'Parcial / Coadyuvante'
+                              : 'Sin indicación · No tratar el monitor'}
                           </span>
                         </div>
                         <p className="text-[11px] text-[#55685F] leading-snug">

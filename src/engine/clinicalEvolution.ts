@@ -231,12 +231,24 @@ export function evaluateClinicalEvolutionStep(params: {
   const lastAdverseRec = lastAdverseIdx >= 0 ? statInterventions[lastAdverseIdx] : undefined;
   const lastAdverseNote = lastAdverseRec ? norm(lastAdverseRec.physiologicalEffectSummary) : '';
 
+  const isHypovolemicOrBleedPathology =
+    /dengue|ectopico|hemorragia digestiva|ulcera peptica|deshidrat|cetoacidosis|hipovolem/.test(diagText);
+
   const hasValidHemodynamicRescue = statInterventions.some((r, idx) => {
-    if (!isSafeStat(r)) return false;
+    if (!isSafeStat(r) || r.effectSeverity === 'sin_cambio') return false;
     const d = drugOf(r);
+    const hasPriorCrystalloidOrBlood = statInterventions
+      .slice(0, idx)
+      .some(
+        (prev) =>
+          isSafeStat(prev) &&
+          prev.effectSeverity !== 'sin_cambio' &&
+          /\b(salina|ssn|hartmann|ringer|cristaloide|concentrado eritrocitario|sangre)\b/.test(drugOf(prev))
+      );
+    const pressorAllowed = !isHypovolemicOrBleedPathology || hasPriorCrystalloidOrBlood;
     const isFluidOrPressor =
       (!isPulmonaryEdemaOrChf && /\b(salina|ssn|hartmann|ringer|cristaloide)\b/.test(d)) ||
-      /\b(norepinefrina|noradrenalina|dopamina|vasopresina|dobutamina)\b/.test(d) ||
+      (pressorAllowed && /\b(norepinefrina|noradrenalina|dopamina|vasopresina|dobutamina)\b/.test(d)) ||
       (isPulmonaryEdemaOrChf && /\b(furosemida|nitroglicerina)\b/.test(d)) ||
       (isAnaphylaxis && /\b(adrenalina|epinefrina)\b/.test(d)) ||
       (isAdrenalCrisis && /\bhidrocortisona\b/.test(d)) ||
@@ -250,15 +262,23 @@ export function evaluateClinicalEvolutionStep(params: {
     return isFluidOrPressor && !hasLaterHemoAdverse;
   });
 
+  const isNonParenchymalRespEmergency =
+    /asma|epoc|crup|laringotraque|anafilax|neumotorax|taponamiento|edema agudo.*pulmon|insuficiencia cardiaca.*descompensada|organofosforad|miasten|guillain/.test(
+      diagText
+    );
+
   const hasValidRespiratoryTx = statInterventions.some((r, idx) => {
-    if (!isSafeStat(r)) return false;
+    if (!isSafeStat(r) || r.effectSeverity === 'sin_cambio') return false;
     const d = drugOf(r);
     const isResp =
-      /\b(oxigeno|o2|mascarilla|canula|naloxona|flumazenil|gluconato de calcio)\b/.test(d) ||
-      ((/asma|epoc|bronquiolitis|broncoespasmo/.test(diagText) || isAnaphylaxis) &&
+      /\b(naloxona|flumazenil|gluconato de calcio)\b/.test(d) ||
+      (!isNonParenchymalRespEmergency && /\b(oxigeno|o2|mascarilla|canula)\b/.test(d)) ||
+      (isCarbonMonoxide && /\b(oxigeno|o2|mascarilla)\b/.test(d)) ||
+      ((/asma|epoc|broncoespasmo/.test(diagText) || isAnaphylaxis) &&
         /\b(salbutamol|albuterol|ipratropio|broncodilat)\b/.test(d)) ||
       (isPulmonaryEdemaOrChf && /\b(furosemida|nitroglicerina)\b/.test(d)) ||
       ((isAnaphylaxis || /crup|laringotraque/.test(diagText)) && /\b(adrenalina|epinefrina)\b/.test(d)) ||
+      (/crup|laringotraque/.test(diagText) && /\bdexametasona\b/.test(d)) ||
       (isOrganophosphate && /\batropina\b/.test(d)) ||
       (isMyasthenicCrisis && /\b(piridostigmina|neostigmina|inmunoglobulina|igiv)\b/.test(d));
     const hasLaterRespAdverse =
@@ -267,15 +287,14 @@ export function evaluateClinicalEvolutionStep(params: {
   });
 
   const hasValidBpControlTx = statInterventions.some((r) => {
-    if (!isSafeStat(r)) return false;
+    if (!isSafeStat(r) || r.effectSeverity === 'sin_cambio') return false;
     const d = drugOf(r);
     return (
-      /\b(labetalol|hidralazina|nitroprusiato|nicardipin|nifedipin|enalapril|propranolol|metoprolol|esmolol|nitroglicerina)\b/.test(
+      /\b(labetalol|hidralazina|nitroprusiato|nicardipin[oa]?|nifedipin[oa]?|enalapril|enalaprilato|propranolol|metoprolol|esmolol|nitroglicerina)\b/.test(
         d
       ) ||
       (isPheochromocytoma && /\b(fentolamina|fenoxibenzamina|prazosina|doxazosina)\b/.test(d)) ||
-      (isPulmonaryEdemaOrChf && /\bfurosemida\b/.test(d)) ||
-      (isObstetricEclampsia && /\b(sulfato de magnesio|magnesio|mgso4)\b/.test(d))
+      (isPulmonaryEdemaOrChf && /\bfurosemida\b/.test(d))
     );
   });
 
@@ -290,11 +309,15 @@ export function evaluateClinicalEvolutionStep(params: {
     (isIschemicHeart && currentVitals.heartRate > 110);
 
   const hasValidRateControlTx = statInterventions.some((r) => {
-    if (!isSafeStat(r)) return false;
+    if (!isSafeStat(r) || r.effectSeverity === 'sin_cambio') return false;
     const d = drugOf(r);
+    const isDigoxin = /\bdigoxina\b/.test(d);
+    const isAdenosine = /\badenosin[ae]?\b/.test(d);
+    if (isDigoxin && isTsvp && !isAfibRvr) return false;
+    if (isAdenosine && isVentricularTachycardia && !isTsvp && !isAfibRvr) return false;
     return (
       (isPrimaryTachycardicDriver &&
-        (/\b(propranolol|metoprolol|esmolol|atenolol|labetalol|diltiazem|verapamilo|amiodarona|adenosina|lidocaina|digoxina|diazepam|lorazepam|midazolam)\b/.test(
+        (/\b(propranolol|metoprolol|esmolol|atenolol|labetalol|diltiazem|verapamilo|amiodarona|adenosin[ae]?|lidocaina|digoxina|diazepam|lorazepam|midazolam)\b/.test(
           d
         ) ||
           (isSerotoninSyndrome && /\bciproheptadina\b/.test(d)) ||
@@ -347,15 +370,17 @@ export function evaluateClinicalEvolutionStep(params: {
     );
 
   const hasValidNeuroTx = statInterventions.some((r) => {
-    if (!isSafeStat(r)) return false;
+    if (!isSafeStat(r) || r.effectSeverity === 'sin_cambio') return false;
     const d = drugOf(r);
     return (
       /\b(diazepam|lorazepam|midazolam|fenitoina|levetiracetam|naloxona|flumazenil|gluconato de calcio|manitol)\b/.test(
         d
       ) ||
       (isObstetricEclampsia && /\b(magnesio|mgso4)\b/.test(d)) ||
-      (isMeningitis && /\b(ceftriaxona|cefotaxima|vancomicina|ampicilina|dexametasona)\b/.test(d)) ||
-      (isHemorrhagicStrokeOrIch && /\b(nimodipino|labetalol|nicardipin)\b/.test(d)) ||
+      (isMeningitis && /\b(ceftriaxona|cefotaxima|vancomicina|ampicilina|meropenem)\b/.test(d)) ||
+      (isHemorrhagicStrokeOrIch &&
+        (/\b(labetalol|nicardipin[oa]?)\b/.test(d) ||
+          (/subaracnoidea/.test(diagText) && /\bnimodipin[oa]?\b/.test(d)))) ||
       (isSerotoninSyndrome && /\b(ciproheptadina|diazepam|lorazepam|midazolam)\b/.test(d)) ||
       (isCarbonMonoxide && /\b(oxigeno|o2|mascarilla)\b/.test(d)) ||
       (typeof glucose === 'number' && baselineVitals.bloodGlucose !== undefined && baselineVitals.bloodGlucose < 70 && /\b(dextrosa|glucosa)\b/.test(d))
@@ -880,7 +905,9 @@ export function evaluateClinicalEvolutionStep(params: {
     hasValidInsulinTx ||
     hasValidDextroseTx ||
     hasValidNeuroTx ||
+    hasValidMethanolTx ||
     (hasValidAntipyreticTx &&
+      !isTrueAcuteEmergency &&
       !isHypovolemicOrDistributive &&
       !isHypoxemicRespiratoryEmergency &&
       !postStep.isHypotensive &&

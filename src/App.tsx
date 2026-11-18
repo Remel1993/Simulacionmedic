@@ -1305,42 +1305,46 @@ export default function App() {
                   disclosedBackground={disclosedBg}
                 />
 
-                {/* Sticky Compact Telemetry Strip when scrolled into Expediente (searching/typing) */}
+                {/* Fixed Out-of-Flow Compact Telemetry Strip when scrolled into Expediente (zero layout shift) */}
                 {isMonitorOffscreen && !evaluationResult && (
                   <div
                     aria-label="Monitor compacto en vivo"
-                    className={`sticky top-[104px] md:top-[116px] z-30 rounded-xl border px-3 py-1.5 shadow-md backdrop-blur-md flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums ${
-                      evolutionState?.trajectory === 'critico' || isPatientDeceased
-                        ? 'bg-rose-50/95 border-rose-300 text-rose-950'
-                        : 'bg-[#F3FBF6]/95 border-[#B8D7C4] text-[#1F4B3A]'
-                    }`}
+                    className="fixed top-[104px] md:top-[116px] left-0 right-0 z-30 pointer-events-none px-2.5 sm:px-6"
                   >
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="inline-flex items-center gap-1 font-sans font-bold">
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-                            evolutionState?.trajectory === 'critico' || isPatientDeceased
-                              ? 'bg-rose-600'
-                              : 'bg-emerald-600'
-                          }`}
-                        />
-                        <span>En vivo</span>
-                      </span>
-                      <span>TA {liveVitalSigns.bloodPressure.split(' ')[0]}</span>
-                      <span>FC {liveVitalSigns.heartRate}</span>
-                      <span>FR {liveVitalSigns.respiratoryRate}</span>
-                      <span>SpO₂ {liveVitalSigns.oxygenSaturation}%</span>
-                      <span>T° {liveVitalSigns.temperature.toFixed(1)}°</span>
-                      <span>GCS {liveVitalSigns.glasgow}/15</span>
-                      {typeof liveVitalSigns.bloodGlucose === 'number' && (
-                        <span>Gluc {liveVitalSigns.bloodGlucose}</span>
+                    <div
+                      className={`max-w-5xl mx-auto pointer-events-auto h-9 rounded-xl border px-3 shadow-md backdrop-blur-md flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums overflow-hidden ${
+                        evolutionState?.trajectory === 'critico' || isPatientDeceased
+                          ? 'bg-rose-50/95 border-rose-300 text-rose-950'
+                          : 'bg-[#F3FBF6]/95 border-[#B8D7C4] text-[#1F4B3A]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-x-3 overflow-x-auto no-scrollbar whitespace-nowrap min-w-0 flex-1">
+                        <span className="inline-flex items-center gap-1 font-sans font-bold shrink-0">
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                              evolutionState?.trajectory === 'critico' || isPatientDeceased
+                                ? 'bg-rose-600'
+                                : 'bg-emerald-600'
+                            }`}
+                          />
+                          <span>En vivo</span>
+                        </span>
+                        <span className="shrink-0">TA {liveVitalSigns.bloodPressure.split(' ')[0]}</span>
+                        <span className="shrink-0">FC {liveVitalSigns.heartRate}</span>
+                        <span className="shrink-0">FR {liveVitalSigns.respiratoryRate}</span>
+                        <span className="shrink-0">SpO₂ {liveVitalSigns.oxygenSaturation}%</span>
+                        <span className="shrink-0">T° {liveVitalSigns.temperature.toFixed(1)}°</span>
+                        <span className="shrink-0">GCS {liveVitalSigns.glasgow}/15</span>
+                        {typeof liveVitalSigns.bloodGlucose === 'number' && (
+                          <span className="shrink-0">Gluc {liveVitalSigns.bloodGlucose}</span>
+                        )}
+                      </div>
+                      {isUrgenciasMode && (
+                        <span className="font-bold text-amber-800 shrink-0 whitespace-nowrap">
+                          Ventana {formatTimer(urgenciasRemaining)}
+                        </span>
                       )}
                     </div>
-                    {isUrgenciasMode && (
-                      <span className="font-bold text-amber-800">
-                        Ventana {formatTimer(urgenciasRemaining)}
-                      </span>
-                    )}
                   </div>
                 )}
 
@@ -1614,6 +1618,8 @@ export default function App() {
                                   onPendingDraftChange={setPendingMedDraft}
                                   isEcoeMode={isExamenMode}
                                   gameMode={currentCase.mode}
+                                  patientAge={currentCase.patientInfo.age}
+                                  patientWeightKg={currentCase.vitalSigns.weightKg}
                                 />
                               )}
 

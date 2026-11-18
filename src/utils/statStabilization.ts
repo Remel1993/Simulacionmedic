@@ -542,6 +542,9 @@ interface CaseClinicalFlags {
   isEctopicRuptured: boolean;
   isRenalFailureOrHyperK: boolean;
   isHyperkalemia: boolean;
+  isBronchospasm: boolean;
+  isCroup: boolean;
+  isBronchiolitis: boolean;
   isObstructiveAirway: boolean;
   isCopd: boolean;
   isAnaphylaxis: boolean;
@@ -597,6 +600,7 @@ interface CaseClinicalFlags {
   isHerpeticKeratitis: boolean;
   isTinea: boolean;
   isSepticArthritis: boolean;
+  hypotensionSbpLimit: number;
   isTrueShock: boolean;
   isTrueHypertensiveEmergency: boolean;
 }
@@ -606,9 +610,16 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
   const fullCaseNorm = norm(
     `${caseData.solution.correctDiagnosis} ${caseData.solution.pathophysiology} ${caseData.patientInfo.consultReason} ${caseData.patientInfo.currentIllness}`
   );
-  const bgMedsNorm = norm(
-    `${(caseData.background.currentMedications || []).join(' ')} ${(caseData.background.pathological || []).join(' ')} ${caseData.patientInfo.currentIllness}`
-  );
+  const rawBgMedsText = `${(caseData.background.currentMedications || []).join('. ')} . ${(caseData.background.pathological || []).join('. ')} . ${caseData.patientInfo.currentIllness || ''}`;
+  const bgMedsNorm = rawBgMedsText
+    .split(/[.;]+/)
+    .map((cl) => norm(cl))
+    .filter(
+      (cl) =>
+        cl &&
+        !/\b(suspendi[oa]|abandono|dejo de tomar|descontinuo|sin tomar|niega|no toma|hace\s+\d+\s+mes)\b/.test(cl)
+    )
+    .join(' . ');
   const allergiesNorm = norm((caseData.background.allergies || []).join(' '));
   const ageYears = caseData.patientInfo.age;
   const isPediatric = ageYears < 12;
@@ -643,13 +654,14 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
     diagNorm.includes('insuficiencia renal');
   const isRenalFailureOrHyperK =
     isHyperkalemia || renal.hasRenalImpairment || diagNorm.includes('renal') || fullCaseNorm.includes('rabdomiolisis');
-  const isObstructiveAirway =
+  const isBronchospasm =
     diagNorm.includes('asma') ||
     diagNorm.includes('epoc') ||
-    diagNorm.includes('bronquiolitis') ||
     diagNorm.includes('broncoespasmo') ||
-    diagNorm.includes('crup') ||
     diagNorm.includes('anafilax');
+  const isCroup = diagNorm.includes('crup') || diagNorm.includes('laringotraque');
+  const isBronchiolitis = diagNorm.includes('bronquiolitis');
+  const isObstructiveAirway = isBronchospasm || isCroup || isBronchiolitis;
   const isCopd = diagNorm.includes('epoc') || diagNorm.includes('enfisema') || bgMedsNorm.includes('epoc');
   const isAnaphylaxis = diagNorm.includes('anafilax');
   const isPulmonaryEdemaOrFluidOverload =
@@ -771,7 +783,7 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
     diagNorm.includes('reflujo gastroesofagico') ||
     diagNorm.includes('erge');
   const isNauseaVertigoPrimary =
-    /vertigo|hiperemesis|gastroenteritis|migran|cinetosis/.test(diagNorm) || isGiUlcerOrBleedOrGerd;
+    /vertigo|hiperemesis|gastroenteritis|migran|cinetosis/.test(diagNorm);
   const isPanicOrSympathomimetic =
     /ataque de panico|trastorno de panico|ansiedad|cocaina|anfetamina|simpaticomimet/.test(diagNorm);
   const isEndocrineHyperthermia = isThyroidStorm || isSerotoninSyndrome;
@@ -779,21 +791,29 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
   const isHerpeticKeratitis = diagNorm.includes('queratitis herpetica');
   const isTinea = diagNorm.includes('tina') || diagNorm.includes('tinea') || diagNorm.includes('dermatofitosis');
 
+  const hypotensionSbpLimit =
+    ageYears < 1 ? 70 : ageYears < 10 ? 70 + 2 * Math.floor(ageYears) : 90;
+
+  const hasShockSyndrome =
+    /choque|shock|sepsis|cetoacidosis|estado hiperosmolar|ectopico|hemorragia digestiva|crisis suprarrenal|anafilax|malaria.*grave/.test(
+      diagNorm
+    ) ||
+    ((isDengue || diagNorm.includes('deshidrat') || diagNorm.includes('gastroenteritis')) &&
+      (bp.sys < hypotensionSbpLimit + 5 ||
+        bp.sys - bp.dia <= 24 ||
+        vitals.heartRate >= 115 ||
+        /\b(choque|alarma|deshidratacion (?:moderada|severa|grave)|hipotens|llenado capilar lento)\b/.test(
+          fullCaseNorm
+        )));
+
   const isTrueShock =
-    bp.sys < 95 ||
+    bp.sys < hypotensionSbpLimit ||
     (!isPanicOrSympathomimetic &&
       !isArrhythmiaTachy &&
       !isHemorrhagicStroke &&
       !isIschemicStroke &&
       !isPreeclampsiaOrEclampsia &&
-      (/choque|shock|sepsis|cetoacidosis|estado hiperosmolar|deshidrat|hemorragia digestiva|ectopico/.test(
-        diagNorm
-      ) ||
-        isDengue ||
-        isAdrenalCrisis ||
-        isAnaphylaxis ||
-        isMalariaSevere ||
-        isMyxedemaComa));
+      (hasShockSyndrome || isAdrenalCrisis || isAnaphylaxis || isMyxedemaComa));
 
   const isTrueHypertensiveEmergency =
     bp.sys >= 180 ||
@@ -825,6 +845,9 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
     isEctopicRuptured,
     isRenalFailureOrHyperK,
     isHyperkalemia,
+    isBronchospasm,
+    isCroup,
+    isBronchiolitis,
     isObstructiveAirway,
     isCopd,
     isAnaphylaxis,
@@ -880,6 +903,7 @@ function extractCaseClinicalFlags(caseData: ClinicalCase, vitals: VitalSigns): C
     isHerpeticKeratitis,
     isTinea,
     isSepticArthritis,
+    hypotensionSbpLimit,
     isTrueShock,
     isTrueHypertensiveEmergency,
   };
@@ -910,6 +934,10 @@ function getCumulativePriorDoses(
 
 function resolvePrimaryAntihypertensiveDrug(drugNorm: string, doseNorm: string): string {
   const candidates = [
+    'doxazosina',
+    'prazosina',
+    'fenoxibenzamina',
+    'fentolamina',
     'labetalol',
     'hidralazina',
     'nitroprusiato',
@@ -1138,7 +1166,7 @@ function computeCumulativePharmacology(
     if (/\b(cloruro de potasio|kcl|potasio)\b/.test(dNorm) && !dNorm.includes('losartan')) {
       state.kclMeq += p.meq ?? (p.mg ? p.mg / 74.5 : 20);
     } else if (
-      /\b(labetalol|hidralazina|nifedipin|nitroprusiato|nicardipin|enalaprilat|enalapril|antihipertensiv|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(
+      /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat[o]?|enalapril|antihipertensiv[oa]?|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(
         dNorm
       )
     ) {
@@ -1339,8 +1367,12 @@ export function applyStatIntervention(
     isDengue,
     isActiveBleed,
     isHemorrhagicStroke,
+    isEctopicRuptured,
     isRenalFailureOrHyperK,
     isHyperkalemia,
+    isBronchospasm,
+    isCroup,
+    isBronchiolitis,
     isObstructiveAirway,
     isCopd,
     isAnaphylaxis,
@@ -1359,6 +1391,8 @@ export function applyStatIntervention(
     isMethanol,
     isAcetaminophenTox,
     isAcutePulmonaryEmbolism,
+    isPneumothorax,
+    isTamponade,
     isAorticDissection,
     isPreeclampsiaOrEclampsia,
     isNeurologicEmergency,
@@ -1394,6 +1428,7 @@ export function applyStatIntervention(
     isPreloadDependentShock,
     isIschemicStroke,
     usesPde5,
+    hypotensionSbpLimit,
     isTrueShock,
     isTrueHypertensiveEmergency,
   } = flags;
@@ -1443,9 +1478,13 @@ export function applyStatIntervention(
     /\b(penicilina|amoxicilina|ampicilina|piperacilina|oxacilina|dicloxacilina|amoxiclav)\b/.test(drugNorm);
   const isSulfaDrug = /\b(sulfa|trimetoprim|cotrimoxazol|bactrim)\b/.test(drugNorm);
   const isAsaDrug = /\b(aspirina|acetilsalicilico|acido acetilsalicilico|aas|asa)\b/.test(drugNorm);
+  const nsaidTokenRegex =
+    /\b(ibuprofeno|diclofenaco|ketorolaco|naproxeno|metamizol|dipirona|piroxicam|indometacina|meloxicam|celecoxib)\b/;
   const isNsaidDrug =
-    /\b(ibuprofeno|diclofenaco|ketorolaco|naproxeno|metamizol|dipirona|piroxicam|indometacina|meloxicam|celecoxib)\b/.test(
-      drugNorm
+    nsaidTokenRegex.test(drugNorm) &&
+    !(
+      /\b(paracetamol|acetaminofen)\b/.test(doseNorm) &&
+      !nsaidTokenRegex.test(doseNorm)
     );
 
   // Choque / hipovolemia estrictos (no confundir taquicardia sinusal/TSVP/ansiedad/asma con choque hipovolémico)
@@ -1731,12 +1770,15 @@ export function applyStatIntervention(
   else if (/\b(cloruro de potasio|kcl|potasio)\b/.test(drugNorm) && !drugNorm.includes('losartan')) {
     const meq = parsedDose.meq ?? (parsedDose.mg ? parsedDose.mg / 74.5 : 20);
     const totalMeq = meq + cum.kclMeq;
+    const isDirectPush = /\b(bolo|directa|push|stat rapido)\b/.test(`${doseNorm} ${freqNorm}`);
     const isDilutedInfusion =
-      /\b(diluid|en 1000|en 500|por litro|infusion|mantenimiento|bomba)\b/.test(
-        `${doseNorm} ${freqNorm} ${routeNorm}`
-      ) && !/\b(bolo|directa|push|stat rapido)\b/.test(`${doseNorm} ${freqNorm}`);
+      /\b(diluid|en solucion|solucion iv|soluciones de mantenimiento|meq\s*\/\s*l|mmol\s*\/\s*l|en 1000|en 500|por litro|infusion|mantenimiento|bomba|reposicion)\b/.test(
+        `${drugNorm} ${doseNorm} ${freqNorm} ${routeNorm}`
+      ) && !isDirectPush;
+    const isConcentratedHazard =
+      meq >= 60 && !/\b(meq\s*\/\s*l|mmol\s*\/\s*l|en 1000|por litro|en 24|por 24)\b/.test(`${doseNorm} ${freqNorm}`);
 
-    if (isHyperkalemia || !isDilutedInfusion || meq >= 30 || (isIV && meq >= 15 && !isDilutedInfusion)) {
+    if (isHyperkalemia || isDirectPush || !isDilutedInfusion || isConcentratedHazard) {
       effectSeverity = 'reaccion_adversa';
       isImmediateDeath = true;
       immediateDeathReason = isHyperkalemia
@@ -1766,6 +1808,10 @@ export function applyStatIntervention(
       glasgow = clamp(glasgow - 3, 6, 15);
       summary = `Hiperkalemia iatrogénica por acumulación de Cloruro de Potasio (${Math.round(totalMeq)} mEq acumulados): bradicardia severa, ensanchamiento QRS e inestabilidad hemodinámica.`;
       patientFeelingNote = '¡Doctor, siento muchísima debilidad en las piernas, hormigueo y el corazón muy lento e irregular!';
+    } else if (isDkaOrHhs || isBowelObstruction || /\b(hipopotasemia|hipokalemia)\b/.test(diagNorm)) {
+      effectSeverity = 'mejoria';
+      summary = `Reposición diluida y segura de KCl (${cleanDose}; acumulado ${Math.round(totalMeq)} mEq) en solución de mantenimiento: previene o corrige hipopotasemia crítica y arritmias sin irritación miocárdica directa.`;
+      patientFeelingNote = 'Siento un leve ardor en la vena por donde pasa el suero, doctor, pero me siento estable.';
     } else {
       effectSeverity = 'parcial';
       summary = `Reposición diluida cautelosa de KCl (${cleanDose}; acumulado ${Math.round(totalMeq)} mEq) en infusión lenta con monitoreo.`;
@@ -1910,19 +1956,30 @@ export function applyStatIntervention(
   }
   // 4. LABETALOL y ANTIHIPERTENSIVOS IV/VO
   else if (
-    /\b(labetalol|hidralazina|nifedipin|nitroprusiato|nicardipin|enalaprilat|enalapril|antihipertensiv|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(
+    /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat[o]?|enalapril|antihipertensiv[oa]?|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(
       drugNorm
     )
   ) {
-    const isOralOnlyDrug = /\b(losartan|amlodipino|captopril|nifedipin)\b/.test(drugNorm);
-    const isLabetalol = drugNorm.includes('labetalol');
-    const isHidralazina = drugNorm.includes('hidralazina');
-    const isNitroprusiato = drugNorm.includes('nitroprusiato');
-    const isNicardipino = drugNorm.includes('nicardipin');
-    const isAceOrArb = /\b(enalaprilat|enalapril|losartan|captopril)\b/.test(drugNorm);
-    const isPureVasodilator = isHidralazina || isNitroprusiato || isNicardipino || drugNorm.includes('nifedipin');
-    const isBetaBlocker = /\b(labetalol|esmolol|metoprolol|atenolol|propranolol)\b/.test(drugNorm);
-    const isPureBetaBlocker = /\b(esmolol|metoprolol|atenolol|propranolol)\b/.test(drugNorm);
+    const primaryAht = resolvePrimaryAntihypertensiveDrug(drugNorm, doseNorm);
+    const isOralOnlyDrug = /\b(losartan|amlodipino|captopril|nifedipin|doxazosina|prazosina|fenoxibenzamina)\b/.test(primaryAht);
+    const isOralSlowAgent =
+      /\b(losartan|amlodipino|captopril|enalapril)\b/.test(primaryAht) &&
+      !primaryAht.includes('enalaprilat');
+    const isOralRouteNow =
+      routeNorm.includes('oral') || (/\b(vo|via oral|oral)\b/.test(doseNorm) && !isIV);
+    const isLabetalol = primaryAht.includes('labetalol');
+    const isHidralazina = primaryAht.includes('hidralazina');
+    const isNitroprusiato = primaryAht.includes('nitroprusiato');
+    const isNicardipino = primaryAht.includes('nicardipin');
+    const isAceOrArb = /\b(enalaprilat|enalapril|losartan|captopril)\b/.test(primaryAht);
+    const isPureVasodilator =
+      isHidralazina ||
+      isNitroprusiato ||
+      isNicardipino ||
+      primaryAht.includes('nifedipin') ||
+      primaryAht.includes('fentolamina');
+    const isBetaBlocker = /\b(labetalol|esmolol|metoprolol|atenolol|propranolol)\b/.test(primaryAht);
+    const isPureBetaBlocker = /\b(esmolol|metoprolol|atenolol|propranolol)\b/.test(primaryAht);
     const hasPriorBetaBlocker = previousHistory.some(
       (h) =>
         h.effectSeverity !== 'reaccion_adversa' &&
@@ -1934,7 +1991,7 @@ export function applyStatIntervention(
         /\b(fentolamina|fenoxibenzamina|prazosina|doxazosina)\b/.test(norm(`${h.drug} ${h.label}`))
     );
 
-    if (isIV && isOralOnlyDrug) {
+    if (isIV && isOralOnlyDrug && !/\b(o|\/)\b/.test(routeNorm)) {
       effectSeverity = 'reaccion_adversa';
       sys = clamp(sys - 24, 58, 220);
       dia = clamp(dia - 14, 34, 130);
@@ -1960,15 +2017,23 @@ export function applyStatIntervention(
       summary = `¡ERROR CRÍTICO EN DISECCIÓN AÓRTICA!: Vasodilatador puro (${cleanDrug}) sin betabloqueo previo genera taquicardia refleja (+24 lpm) y aumenta el estrés de cizallamiento aórtico (dP/dt), propagando la disección (administrar Esmolol o Labetalol IV primero).`;
       patientFeelingNote =
         '¡Doctor, el dolor desgarrante de pecho y espalda se volvió mucho peor y el corazón me late fuertísimo!';
-    } else if (isPheochromocytoma && isPureBetaBlocker && !hasPriorAlphaBlocker) {
+    } else if (isPheochromocytoma && isBetaBlocker && !hasPriorAlphaBlocker && !isNicardipino) {
       effectSeverity = 'reaccion_adversa';
       sys = clamp(sys + 28, 80, 248);
       dia = clamp(dia + 16, 48, 146);
       hr = clamp(hr - 18, 44, 170);
-      summary = `CRISIS HIPERTENSIVA PARADÓJICA en Feocromocitoma por betabloqueo sin bloqueo alfa previo (${cleanDrug}): vasoconstricción alfa-1 no opuesta (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg).`;
+      summary = `CRISIS HIPERTENSIVA PARADÓJICA en Feocromocitoma por betabloqueo sin bloqueo alfa-1 previo (${cleanDrug}): vasoconstricción alfa-1 no opuesta (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg).`;
       patientFeelingNote =
         '¡Doctor, me estalla la cabeza todavía más fuerte, siento palpitaciones pesadas y opresión en el pecho después de esa dosis!';
-    } else if (isBetaBlocker && (sys < 92 || hr < 52)) {
+    } else if (isPulmonaryEdemaOrFluidOverload && isPureBetaBlocker && !isArrhythmiaTachy) {
+      effectSeverity = 'reaccion_adversa';
+      sys = clamp(sys - 22, 54, 220);
+      dia = clamp(dia - 12, 32, 130);
+      hr = clamp(hr - 14, 42, 165);
+      spo2 = clamp(spo2 - 4, 68, 100);
+      summary = `¡ERROR FISIOPATOLÓGICO EN EDEMA AGUDO DE PULMÓN!: Betabloqueador (${cleanDrug}) deprime el inotropismo ventricular en insuficiencia cardíaca aguda descompensada (ESC Clase III) y precipita choque cardiogénico.`;
+      patientFeelingNote = '¡Doctor, me siento más ahogado, débil y mareado después de esa dosis!';
+    } else if (isBetaBlocker && (sys < hypotensionSbpLimit || hr < 52)) {
       effectSeverity = 'reaccion_adversa';
       sys = clamp(sys - 26, 48, 220);
       dia = clamp(dia - 16, 28, 130);
@@ -2007,17 +2072,22 @@ export function applyStatIntervention(
       effectSeverity = 'reaccion_adversa';
       summary = `¡ERROR FISIOPATOLÓGICO!: Betabloqueador (${cleanDrug}) bloquea la taquicardia compensadora en choque/hipovolemia/sepsis, precipitando caída severa del gasto cardíaco e hipotensión (${sys}/${dia} mmHg).`;
       patientFeelingNote = '¡Doctor, me siento muchísimo más débil, frío y mareado después de esa dosis!';
+    } else if ((isHypertensiveCrisis || isPulmonaryEdemaOrFluidOverload) && (isOralSlowAgent || (isOralRouteNow && isAorticDissection))) {
+      effectSeverity = 'sin_cambio';
+      sys = clamp(sys - 4, 65, 235);
+      summary = `Antihipertensivo oral de inicio lento/errático (${cleanDrug} ${cleanDose}) inadecuado para rescate STAT en emergencia hipertensiva o edema agudo de pulmón: no logra control titulado minuto a minuto (utilizar infusión/bolos IV de Labetalol, Esmolol, Nicardipino, Nitroglicerina o Nitroprusiato).`;
+      patientFeelingNote = 'Me tragué la pastilla, doctor, pero sigo con la presión altísima y el mismo peligro.';
     } else {
       const prevHidra = getCumulativePriorDoses(previousHistory, weightKg, /\bhidralazina\b/);
       const prevNtp = getCumulativePriorDoses(previousHistory, weightKg, /\bnitroprusiato\b/);
-      const prevNif = getCumulativePriorDoses(previousHistory, weightKg, /\bnifedipin/);
+      const prevNif = getCumulativePriorDoses(previousHistory, weightKg, /\bnifedipin[oa]?/);
       const prevLab = getCumulativePriorDoses(previousHistory, weightKg, /\blabetalol\b/);
       const prevOtherAht = getCumulativePriorDoses(
         previousHistory,
         weightKg,
-        /\b(nicardipin|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/
+        /\b(nicardipin[oa]?|enalaprilat[o]?|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/
       );
-      const currentAhtEquiv = getAntihypertensiveEquivUnits(drugNorm, parsedDose);
+      const currentAhtEquiv = getAntihypertensiveEquivUnits(drugNorm, parsedDose, doseNorm, routeNorm);
       const totalAhtEquiv = cum.ahtEquivUnits + currentAhtEquiv;
 
       let rawSysDrop = 20;
@@ -2060,7 +2130,7 @@ export function applyStatIntervention(
         rawDiaDrop = Math.round(rawSysDrop * 0.56);
         hrDelta = Math.round(10 * Math.pow(ratio, 0.4));
         if (prevNtp.count > 0) cumulativeAhtMgNote = ` · acumulado ${totalMg.toFixed(2)} mg (riesgo cianuro)`;
-      } else if (drugNorm.includes('nifedipin')) {
+      } else if (primaryAht.includes('nifedipin')) {
         const mg = parsedDose.mg ?? 10;
         const totalMg = mg + prevNif.mg;
         const isSL = routeNorm.includes('sublingual') || /\bsl\b/.test(routeNorm);
@@ -2073,10 +2143,9 @@ export function applyStatIntervention(
       } else {
         const mg = parsedDose.mg ?? 10;
         const totalOtherMg = mg + prevOtherAht.mg;
-        const ratio = mg / 10;
+        const ratio = clamp(currentAhtEquiv, 0.35, 8);
         isMassiveOverdose =
-          mg >= 80 ||
-          mg / weightKg >= 1.5 ||
+          currentAhtEquiv >= 4.0 ||
           (isPureBetaBlocker && totalAhtEquiv >= 4.5) ||
           totalAhtEquiv >= 5.0;
         isInstantFatalAht = totalAhtEquiv >= 9.5;
@@ -2098,7 +2167,7 @@ export function applyStatIntervention(
 
       const mapAfter = calcMAP(sys, dia);
       const mapDropPct = Math.round(((mapBefore - mapAfter) / Math.max(1, mapBefore)) * 100);
-      const isIatrogenicHypotension = sys < 95 || mapAfter < 65 || hr < 50 || isMassiveOverdose;
+      const isIatrogenicHypotension = sys < hypotensionSbpLimit || mapAfter < 65 || hr < 50 || isMassiveOverdose;
       const isExcessiveDrop = mapDropPct >= 25;
 
       if (isInstantFatalAht) {
@@ -2132,6 +2201,14 @@ export function applyStatIntervention(
         summary = `Descenso agresivo de PA en EVC Isquémico (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg, -${mapDropPct}% PAM${cumulativeAhtMgNote}): compromete la perfusión de la zona de penumbra isquémica (meta sin trombólisis: tolerar <220/120; con trombólisis: <185/110).`;
         patientFeelingNote =
           'Doctor, me siento más mareado y con más dificultad para mover el lado debilitado desde que bajó tanto la presión...';
+      } else if (isIschemicStroke && bp.sys < 220 && bp.dia < 120) {
+        effectSeverity = 'parcial';
+        summary = `Descenso tensional cauteloso en EVC Isquémico (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg${cumulativeAhtMgNote}): solo está indicado reducir PA de <220/120 a <185/110 mmHg como preparación previa a trombólisis IV; sin trombólisis rige hipertensión permisiva hasta 220/120 mmHg.`;
+        patientFeelingNote = 'Me bajó ligeramente la presión, doctor, sigo bajo vigilancia neurológica.';
+      } else if (isHemorrhagicStroke && bp.sys < 140) {
+        effectSeverity = 'reaccion_adversa';
+        summary = `Descenso tensional excesivo en Hemorragia Intracerebral (PA basal ${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg): la meta AHA/ASA es PAS ~140 mmHg sin caer por debajo de 130 mmHg para evitar isquemia cerebral secundaria.`;
+        patientFeelingNote = 'Doctor, me siento más mareado y somnoliento desde que bajó tanto la presión...';
       } else if (isExcessiveDrop) {
         effectSeverity = 'reaccion_adversa';
         summary = `Descenso tensional demasiado brusco (caída de PAM del ${mapDropPct}%, superando la meta segura ≤25% en la primera hora) tras ${cleanDose} de ${cleanDrug}${cumulativeAhtMgNote}: riesgo de hipoperfusión cerebral/renal o placentaria.`;
@@ -2146,7 +2223,7 @@ export function applyStatIntervention(
           'Doctor, ya siento menos presión en la cabeza y me disminuyó el malestar sin marearme.';
       } else {
         effectSeverity = 'sin_cambio';
-        summary = `Antihipertensivo (${cleanDrug} ${cleanDose}${cumulativeAhtMgNote}) sin criterio de emergencia hipertensiva: la elevación leve/reactiva por dolor o ansiedad no debe tratarse agresivamente en agudo (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg).`;
+        summary = `Antihipertensivo (${cleanDrug} ${cleanDose}${cumulativeAhtMgNote}) sin criterio de emergencia hipertensiva: la elevación reactiva por dolor, fiebre o ansiedad no debe tratarse agresivamente en el monitor (${bp.sys}/${bp.dia} → ${sys}/${dia} mmHg).`;
         patientFeelingNote =
           'Siento algo de pesadez ligera, doctor, aunque mi molestia de fondo sigue igual.';
       }
@@ -2217,15 +2294,41 @@ export function applyStatIntervention(
       }
     }
   }
-  // 6. VASOPRESORES (Norepinefrina, Dopamina, Vasopresina, Dobutamina — acumulativo)
+  // 6. VASOPRESORES (Norepinefrina, Dopamina, Vasopresina, Dobutamina — jamás para maquillar PA en hipovolemia sin volumen)
   else if (/\b(norepinefrina|noradrenalina|dopamina|dobutamina|vasopresina)\b/.test(drugNorm)) {
     const mg = parsedDose.mg ?? 0.02;
     const totalMg = mg + cum.pressorMg;
     const totalCount = 1 + cum.pressorCount;
     const isMassiveBolus = mg >= 2 || totalMg >= 3 || (totalCount >= 3 && sys >= 128);
-    if (sys >= 115 || isMassiveBolus) {
-      sys = clamp(sys + (isMassiveBolus ? 85 : 45), 70, 248);
-      dia = clamp(dia + (isMassiveBolus ? 46 : 24), 45, 148);
+    const hasPriorSafeFluid = previousHistory.some(
+      (h) =>
+        h.effectSeverity !== 'reaccion_adversa' &&
+        /\b(salina|ssn|hartmann|ringer|cristaloide|concentrado eritrocitario|sangre|plasma|albumina)\b/.test(
+          norm(`${h.drug} ${h.label}`)
+        )
+    );
+    const isUnresuscitatedHypovolemia =
+      !hasPriorSafeFluid &&
+      (isActiveBleed || isEctopicRuptured || isDengue || /\b(deshidrat|gastroenteritis|hipovolem)\b/.test(diagNorm));
+    const isContraindicatedPressorPath =
+      isVentricularTachycardia ||
+      isSvt ||
+      isAfibRvr ||
+      isPheochromocytoma ||
+      isThyroidStorm ||
+      isAorticDissection ||
+      isPreeclampsiaOrEclampsia ||
+      isIschemicStroke ||
+      isHemorrhagicStroke;
+    const isTruePressorNeed =
+      sys < hypotensionSbpLimit ||
+      mapBefore < 65 ||
+      (isInfranodalAvBlock && (drugNorm.includes('dopamina') || drugNorm.includes('adrenalina'))) ||
+      ((isPulmonaryEdemaOrFluidOverload || isIschemicChestPain) && drugNorm.includes('dobutamina') && sys < 95);
+
+    if (!isTruePressorNeed || isMassiveBolus || isContraindicatedPressorPath) {
+      sys = clamp(sys + (isMassiveBolus ? 85 : 38), 70, 248);
+      dia = clamp(dia + (isMassiveBolus ? 46 : 22), 45, 148);
       hr = clamp(hr + (isMassiveBolus ? 46 : 24), 45, 188);
       if (sys >= 220) glasgow = clamp(glasgow - 6, 5, 9);
       effectSeverity = 'reaccion_adversa';
@@ -2233,11 +2336,31 @@ export function applyStatIntervention(
         isImmediateDeath = true;
         immediateDeathReason = `Fibrilación ventricular / hemorragia intracerebral fulminante por acumulación o bolo masivo de vasopresor (${cleanDose} de ${cleanDrug}, acumulado ${totalMg.toFixed(2)} mg).`;
       }
-      summary = `Crisis hipertensiva severa y riesgo de isquemia/arritmia maligna por vasopresor (${cleanDose} ${cleanDrug}; ${totalCount} dosis / ${totalMg.toFixed(2)} mg acumulados)${sys >= 115 && !isMassiveBolus ? ' en paciente sin hipotensión' : ' por dosis excesiva o acumulación adrenérgica'}.`;
+      summary = isContraindicatedPressorPath
+        ? `¡ERROR CRÍTICO FISIOPATOLÓGICO!: Vasopresor/inotrópico catecolaminérgico (${cleanDrug}) en ${isAorticDissection ? 'Disección Aórtica' : isPheochromocytoma ? 'Feocromocitoma' : isThyroidStorm ? 'Tormenta Tiroidea' : isArrhythmiaTachy ? 'taquiarritmia activa' : 'emergencia neurovascular/obstétrica'} dispara estrés vascular, consumo miocárdico de O₂ y arritmias malignas.`
+        : !isTruePressorNeed
+          ? `¡NO TRATAR EL MONITOR!: Vasopresor (${cleanDose} ${cleanDrug}) administrado sin choque ni hipoperfusión (PA ${bp.sys}/${bp.dia} mmHg): induce hipertensión reactiva, vasoconstricción renal/coronaria y arritmias.`
+          : `Crisis hipertensiva severa y riesgo de isquemia/arritmia maligna por sobredosis/acumulación de vasopresor (${cleanDose} ${cleanDrug}; ${totalCount} dosis / ${totalMg.toFixed(2)} mg acumulados).`;
       patientFeelingNote =
         glasgow <= 9
           ? '[Crisis hipertensiva maligna con pérdida brusca de la conciencia y arritmia]'
           : '¡Doctor, me estalla la cabeza, siento los dedos fríos y un apretón horrible en el pecho con el corazón desbocado!';
+    } else if (isUnresuscitatedHypovolemia && !drugNorm.includes('dobutamina')) {
+      if (sys >= 68) {
+        hr = clamp(hr + 18, 60, 185);
+        sys = clamp(sys + 10, 62, 140);
+        dia = clamp(dia + 6, 38, 90);
+        effectSeverity = 'reaccion_adversa';
+        summary = `¡ERROR FISIOPATOLÓGICO!: Vasopresor (${cleanDrug}) en choque hipovolémico/hemorrágico SIN reposición previa de volumen o hemoderivados: vasoconstriñe lecho esplácnico y renal sobre un compartimiento intravascular vacío, agravando acidosis láctica e isquemia orgánica (no maquilles la cifra del monitor; repón cristaloides/sangre primero).`;
+        patientFeelingNote = 'Doctor, siento un dolor abdominal o en el pecho más feo, los dedos helados y sigo muy mareado.';
+      } else {
+        sys = clamp(sys + 18, 65, 115);
+        dia = clamp(dia + 10, 40, 75);
+        hr = clamp(hr + 12, 65, 182);
+        effectSeverity = 'parcial';
+        summary = `Medida puente de salvataje temporal (${cleanDrug}) en choque hipovolémico/hemorrágico extremo (PAS ${bp.sys} mmHg) sin volumen previo: exige infusión INMEDIATA de cristaloides/hemoderivados para restaurar precarga.`;
+        patientFeelingNote = 'Sigue frío y muy pálido, doctor; requiere volumen intravascular urgente.';
+      }
     } else {
       const gainSys = clamp(Math.round(24 + mg * 40), 18, 42);
       sys = clamp(sys + gainSys, 75, 138);
@@ -2245,29 +2368,32 @@ export function applyStatIntervention(
       hr = clamp(hr - (hr > 125 ? 10 : -8), 55, 175);
       if (glasgow < 15 && bp.sys < 85) glasgow = clamp(glasgow + 1, 3, 15);
       effectSeverity = 'mejoria';
-      summary = `Soporte vasopresor titulado con ${cleanDrug} (${totalCount} ajuste(s)): recuperación de PAM ≥65 mmHg y perfusión orgánica.`;
-      patientFeelingNote = 'Parece que está reaccionando un poco mejor, doctor, la presión subió en el monitor.';
+      summary = `Soporte vasopresor/inotrópico fisiológicamente indicado con ${cleanDrug} (${totalCount} ajuste(s)): optimiza PAM ≥65 mmHg y perfusión orgánica tras asegurar precarga/mecanismo causal.`;
+      patientFeelingNote = 'Parece responder mejor la perfusión, doctor, disminuyó la confusión y el mareo extremo.';
     }
   }
-  // 7. OXÍGENO SUPLEMENTARIO (acumulativo en EPOC e hiperoxia)
+  // 7. OXÍGENO SUPLEMENTARIO (metas fisiológicas por patología; nunca sustituye al tratamiento primario)
   else if (/\b(oxigeno|o2|mascarilla|canula)\b/.test(drugNorm)) {
-    const targetSpo2 = isCopd ? 92 : 97;
+    const targetSpo2 = isCopd ? 92 : isIschemicChestPain || isIschemicStroke || isHemorrhagicStroke ? 90 : 94;
+    const isClusterHeadache = diagNorm.includes('racimos');
     const lpm =
       parsedDose.lpm ??
       (parsedDose.percent ? Math.round((parsedDose.percent - 21) / 4) : 6);
     const totalO2Count = 1 + cum.o2Count;
     const totalO2Lpm = lpm + cum.o2Lpm;
-    if (isCarbonMonoxide) {
+    if (isCarbonMonoxide || isClusterHeadache) {
       hr = clamp(hr - (hr > 95 ? 8 : 3), 55, 165);
       rr = clamp(rr - (rr > 20 ? 3 : 1), 12, 38);
       if (glasgow < 15) glasgow = clamp(glasgow + 1, 3, 15);
       effectSeverity = lpm >= 10 || parsedDose.percent === 100 ? 'mejoria' : 'parcial';
-      summary =
-        effectSeverity === 'mejoria'
+      summary = isClusterHeadache
+        ? `Oxigenoterapia de alto flujo al 100% (${cleanDose}) en Cefalea en Racimos: terapia abortiva de primera línea que induce vasoconstricción trigeminovascular craneal.`
+        : effectSeverity === 'mejoria'
           ? `Oxigenoterapia de alto flujo al 100% (${cleanDose}) en intoxicación por Monóxido de Carbono: acelera disociación de carboxihemoglobina (COHb) y mejora hipoxia tisular aunque la SpO₂ basal pareciera normal.`
           : `Oxígeno (${lpm} L/min) iniciado en intoxicación por CO: conviene mascarilla con reservorio al 100% (12-15 L/min) para desplazar rápidamente la COHb.`;
-      patientFeelingNote =
-        'Con la mascarilla de oxígeno siento menos punzadas en la cabeza y un poco menos de mareo, doctor.';
+      patientFeelingNote = isClusterHeadache
+        ? '¡Qué alivio, doctor! Con el oxígeno a flujo alto se me está quitando ese dolor punzante detrás del ojo.'
+        : 'Con la mascarilla de oxígeno siento menos punzadas en la cabeza y un poco menos de mareo, doctor.';
     } else if (spo2 >= targetSpo2) {
       const isNarcosisRisk = isCopd && (lpm >= 10 || (totalO2Count >= 2 && (lpm >= 6 || totalO2Lpm >= 14)));
       const isCumulativeHyperoxia = !isCopd && totalO2Count >= 4 && lpm >= 10 && spo2 >= 98;
@@ -2288,7 +2414,7 @@ export function applyStatIntervention(
         summary =
           isCopd && lpm >= 6
             ? `Flujo alto de O₂ (${lpm} L/min) en EPOC ya en meta (${spo2}%): riesgo de hipercapnia si se sostiene; titular a 1-3 L/min para meta 88-92%.`
-            : `Oxigenoterapia aplicada (${lpm} L/min) en paciente ya normoxémico (${spo2}%): sin beneficio hemodinámico o respiratorio agudo adicional.`;
+            : `Oxigenoterapia (${lpm} L/min) en paciente normoxémico (SpO₂ ${spo2}% ≥ meta ${targetSpo2}%): en SCA, EVC o urgencias sin hipoxemia NO aporta beneficio y puede generar vasoconstricción coronaria/cerebral por hiperoxia.`;
         patientFeelingNote = isPediatric
           ? 'Mi niño respira igual con la mascarilla, doctor.'
           : 'Siento el aire fresco de la mascarilla, aunque no sentía falta de aire, doctor.';
@@ -2300,16 +2426,28 @@ export function applyStatIntervention(
       spo2 = clamp(spo2 + Math.max(2, gain), 70, 99);
       rr = clamp(rr - (rr > 22 ? 4 : 2), 14, 45);
       hr = clamp(hr - (hr > 100 ? 8 : 3), 55, 170);
-      effectSeverity = gain >= 4 ? 'mejoria' : 'parcial';
-      summary = isCopd
-        ? `Mejoría de oxigenación titulada (${lpm} L/min) buscando meta segura 88-92% en EPOC; disminuye la taquipnea.`
-        : `Incremento de SpO₂ tras oxígeno a ${lpm} L/min y reducción del trabajo respiratorio.`;
+      const needsDefinitiveNonO2Primary =
+        isPneumothorax ||
+        isTamponade ||
+        isPulmonaryEdemaOrFluidOverload ||
+        isAnaphylaxis ||
+        isCroup ||
+        isBronchospasm ||
+        isOrganophosphate ||
+        isMyasthenia ||
+        isAcutePulmonaryEmbolism;
+      effectSeverity = needsDefinitiveNonO2Primary ? 'parcial' : gain >= 4 ? 'mejoria' : 'parcial';
+      summary = needsDefinitiveNonO2Primary
+        ? `Medida puente sobre la oximetría (${lpm} L/min; SpO₂ → ${spo2}%): corrige parcialmente la hipoxemia en el monitor pero NO resuelve el mecanismo fisiopatológico primario (descompresión, broncodilatación, vasodilatación/diuresis o antídoto según la etiología).`
+        : isCopd
+          ? `Mejoría de oxigenación titulada (${lpm} L/min) buscando meta segura 88-92% en EPOC; disminuye la taquipnea.`
+          : `Incremento de SpO₂ tras oxígeno suplementario (${lpm} L/min) en hipoxemia parenquimatosa y reducción del trabajo respiratorio.`;
       patientFeelingNote = isPediatric
         ? '¡Qué alivio, doctor! Con el oxígeno mi niño dejó de respirar tan desesperado y se ve con mejor color.'
-        : '¡Ay, qué alivio, doctor! Con el oxígeno siento que ya me entra mejor el aire y no me ahogo tanto.';
+        : 'Con el oxígeno siento que me entra un poco más de aire, doctor, aunque sigo con la opresión de fondo.';
     }
   }
-  // 8. SALBUTAMOL / BRONCODILATADORES (estrictamente broncoespasmo o hiperkalemia)
+  // 8. SALBUTAMOL / BRONCODILATADORES (estrictamente broncoespasmo o hiperkalemia; NO en bronquiolitis ni crup)
   else if (/\b(salbutamol|albuterol|ipratropio|broncodilat)\b/.test(drugNorm)) {
     const mg =
       parsedDose.mg ??
@@ -2318,13 +2456,13 @@ export function applyStatIntervention(
     const totalMg = mg + prevSaba.mg;
     const isExtremeInhaled = !isHyperkalemia && (mg >= 40 || totalMg >= 65 || (totalMg >= 40 && hr >= 170));
     const isToxicInhaled = !isHyperkalemia && (mg >= 20 || mg / weightKg >= 0.6 || totalMg >= 30 || (!isObstructiveAirway && totalMg >= 20));
-    const isToxicIV = isIV && (mg >= 0.8 || totalMg >= 2.0);
+    const isToxicIV = isIV && !isInhaled && (mg >= 0.8 || totalMg >= 2.0);
     const isIschemicOrTachyDanger =
-      !isObstructiveAirway &&
+      !isBronchospasm &&
       !isHyperkalemia &&
       (isIschemicChestPain || isArrhythmiaTachy || isThyroidStorm || isPheochromocytoma || isPulmonaryEdemaOrFluidOverload);
 
-    if (isExtremeInhaled || (isIV && totalMg >= 5)) {
+    if (isExtremeInhaled || (isIV && !isInhaled && totalMg >= 5)) {
       isImmediateDeath = true;
       effectSeverity = 'reaccion_adversa';
       immediateDeathReason = `Taquiarritmia ventricular maligna e hipopotasemia crítica por sobredosis acumulativa extrema de Salbutamol (${Math.round(totalMg)} mg totales).`;
@@ -2343,11 +2481,11 @@ export function applyStatIntervention(
       summary = `¡ERROR FISIOPATOLÓGICO!: Agonista beta-2 (${cleanDrug}) administrado sin broncoespasmo en patología isquémica, taquiarritmia, tormenta tiroidea o edema pulmonar cardiogénico — induce taquicardia (+16 lpm), mayor consumo miocárdico de O₂ e hipokalemia sin mejorar la hipoxemia.`;
       patientFeelingNote =
         '¡Doctor, siento el corazón muchísimo más acelerado y más opresión en el pecho, no me ayudó a respirar mejor!';
-    } else if (isObstructiveAirway || isHyperkalemia) {
+    } else if (isBronchospasm || isHyperkalemia) {
       const effectiveDoseMg = parsedDose.puffs ? Math.max(2.5, parsedDose.puffs * 1.2) : mg;
       const doseRatio = clamp(effectiveDoseMg / 5, 0.5, 2.2);
-      const gain = isObstructiveAirway ? clamp(Math.round((sameDrugCount >= 2 ? 2 : 5) * Math.min(1.4, doseRatio)), 2, 8) : 0;
-      if (isObstructiveAirway) {
+      const gain = isBronchospasm ? clamp(Math.round((sameDrugCount >= 2 ? 2 : 5) * Math.min(1.4, doseRatio)), 2, 8) : 0;
+      if (isBronchospasm) {
         spo2 = clamp(spo2 + gain, 72, isCopd ? 94 : 99);
         rr = clamp(rr - clamp(Math.round(5 * doseRatio), 2, 8), 14, 44);
       }
@@ -2362,11 +2500,16 @@ export function applyStatIntervention(
           ? 'Siento un poco de temblor en las manos y el corazón algo más rápido, doctor.'
           : 'Siento el pecho mucho más abierto después de la nebulización, doctor; respiro con menos silbido, aunque siento el corazón acelerado.';
     } else {
-      hr = clamp(hr + 12, 55, 180);
+      hr = clamp(hr + 10, 55, 180);
       effectSeverity = sameDrugCount >= 2 ? 'reaccion_adversa' : 'sin_cambio';
-      summary = `Broncodilatador beta-2 (${cleanDose}; acumulado ${totalMg.toFixed(1)} mg) sin broncoespasmo ni hiperkalemia: no corrige neumonía, TEP, neumotórax ni acidosis metabólica (solo genera taquicardia refleja +12 lpm y temblor).`;
-      patientFeelingNote =
-        'Doctor, sigo respirando igual de agitado y ahora me tiemblan las manos con el corazón más rápido.';
+      summary = isBronchiolitis
+        ? `Broncodilatador beta-2 (${cleanDose}) en Bronquiolitis viral: la fisiopatología es edema bronquiolar y tapones de moco, no broncoespasmo liso; guías AAP/NICE recomiendan NO usarlo de rutina (priorizar aspiración nasal, hidratación y O₂ si SpO₂ <90%).`
+        : isCroup
+          ? `Broncodilatador beta-2 (${cleanDose}) en Crup (laringotraqueobronquitis): no actúa sobre el edema laríngeo subglótico; indicar Dexametasona y Adrenalina nebulizada si hay estridor en reposo.`
+          : `Broncodilatador beta-2 (${cleanDose}; acumulado ${totalMg.toFixed(1)} mg) sin broncoespasmo ni hiperkalemia: no corrige neumonía, TEP, neumotórax ni acidosis metabólica (solo genera taquicardia refleja +10 lpm y temblor).`;
+      patientFeelingNote = isBronchiolitis
+        ? 'Doctor, mi bebé sigue respirando igual de rápido y ahora se ve más inquieto y taquicárdico.'
+        : 'Doctor, sigo respirando igual de agitado y ahora siento el corazón más rápido.';
     }
   }
   // 9. ADRENALINA / EPINEFRINA (IM anafilaxia vs Nebulizada crup vs Infusión titulada bloqueo AV completo)
@@ -2459,16 +2602,25 @@ export function applyStatIntervention(
       }
     }
   }
-  // 10. CRISTALOIDES IV (SSN 0.9% / HARTMANN / RINGER — solo benefician hipovolemia/choque/CAD/EHH)
-  else if (/\b(salina|ssn|hartmann|ringer|cristaloide|bolo|suero)\b/.test(drugNorm) && !/\b(glucosad|dextrosa|mixta)\b/.test(drugNorm)) {
+  // 10. CRISTALOIDES IV (SSN 0.9% / HARTMANN / RINGER — sin capturar "bolo" de otros fármacos)
+  else if (
+    /\b(salina|ssn|hartmann|ringer|cristaloide|suero fisiologico|solucion fisiologica|lactato de ringer)\b/.test(
+      drugNorm
+    ) &&
+    !/\b(glucosad|dextrosa|mixta)\b/.test(drugNorm)
+  ) {
     const ml = parsedDose.ml ?? (isPediatric ? Math.round(weightKg * 20) : 500);
-    const prevFluid = getCumulativePriorDoses(previousHistory, weightKg, /\b(salina|ssn|hartmann|ringer|cristaloide)\b/);
+    const prevFluid = getCumulativePriorDoses(previousHistory, weightKg, /\b(salina|ssn|hartmann|ringer|cristaloide|suero fisiologico|solucion fisiologica)\b/);
     const mlPerKg = ml / weightKg;
     const totalMl = ml + prevFluid.ml;
     const totalMlPerKg = totalMl / weightKg;
+    const isActiveHemorrhageOverload = (isActiveBleed || isEctopicRuptured) && totalMl >= 2500;
     const isExcessiveFluidLoad =
-      (isPulmonaryEdemaOrFluidOverload && sys >= 95) ||
+      (isPulmonaryEdemaOrFluidOverload && sys >= 88) ||
       (isPreeclampsiaOrEclampsia && (ml >= 500 || totalMl >= 1000)) ||
+      (isPediatric && isDkaOrHhs && mlPerKg >= 35) ||
+      (isMyxedemaComa && (ml >= 1000 || totalMl >= 1200)) ||
+      isActiveHemorrhageOverload ||
       mlPerKg >= (isPediatric ? 45 : 50) ||
       totalMlPerKg >= 75 ||
       (totalMl >= 2500 && sys >= 120 && !isDkaOrHhs) ||
@@ -2511,24 +2663,35 @@ export function applyStatIntervention(
       } else {
         summary = isPreeclampsiaOrEclampsia
           ? `¡RIESGO DE EDEMA PULMONAR EN PREECLAMPSIA!: Bolo liberal de cristaloides (${ml} mL; acumulado ${Math.round(totalMl)} mL) en paciente con fuga capilar y disfunción endotelial eleva riesgo de edema pulmonar agudo (SpO₂ ${spo2}%).`
-          : `Sobrecarga hídrica / edema pulmonar agudo iatrogénico tras ${ml} mL (acumulado ${Math.round(totalMl)} mL · ${Math.round(totalMlPerKg)} mL/kg) de cristaloide: caída de SpO₂ a ${spo2}% y taquipnea severa${gluNote}.`;
+          : isPediatric && isDkaOrHhs && mlPerKg >= 35
+            ? `¡ALERTA ISPAD DE EDEMA CEREBRAL!: Bolo excesivo de cristaloide (${ml} mL; ${Math.round(mlPerKg)} mL/kg) en cetoacidosis pediátrica eleva riesgo de edema cerebral agudo (administrar bolos iniciales de 10-20 mL/kg).`
+            : isActiveHemorrhageOverload
+              ? `¡COAGULOPATÍA DILUCIONAL!: Exceso de cristaloides (${Math.round(totalMl)} mL acumulados) en hemorragia activa sin transfusión de hemoderivados diluye factores de coagulación y rompe el coágulo (aplicar hipotensión permisiva y paquete globular).`
+              : `Sobrecarga hídrica / edema pulmonar agudo iatrogénico tras ${ml} mL (acumulado ${Math.round(totalMl)} mL · ${Math.round(totalMlPerKg)} mL/kg) de cristaloide: caída de SpO₂ a ${spo2}% y taquipnea severa${gluNote}.`;
       }
       patientFeelingNote = isPediatric
         ? '¡Doctor, con tanto suero acumulado mi niño empezó a respirar agitadísimo y se oye encharcado!'
         : '¡Doctor, siento que me ahogo muchísimo más y burbujea el pecho desde que me pasaron tanto suero!';
-    } else if (isShockOrHypovolemic || sys < 100 || isDkaOrHhs || isPreloadDependentShock) {
+    } else if (isShockOrHypovolemic || sys < hypotensionSbpLimit || isDkaOrHhs || isPreloadDependentShock) {
       const refVol = isPediatric ? Math.max(150, weightKg * 20) : 500;
       const volRatio = clamp(ml / refVol, 0.3, 2.5);
-      const baseSysGain = sys < 95 ? 16 : 10;
+      const baseSysGain = sys < hypotensionSbpLimit ? 16 : 10;
       const sysGain = Math.round(baseSysGain * Math.pow(volRatio, 0.72) * (sameDrugCount >= 2 ? 0.45 : 1));
       const diaGain = Math.round(sysGain * 0.58);
       const hrDrop = Math.round((hr > 100 ? 12 : 5) * Math.pow(volRatio, 0.7) * (sameDrugCount >= 2 ? 0.5 : 1));
       sys = clamp(sys + sysGain, 65, 175);
       dia = clamp(dia + diaGain, 42, 108);
       hr = clamp(hr - hrDrop, 55, 170);
-      if (glasgow < 15 && bp.sys < 95) glasgow = clamp(glasgow + 1, 3, 15);
-      effectSeverity = sysGain >= 6 || salineGlucoseDrop >= 15 || isDkaOrHhs ? 'mejoria' : 'parcial';
-      summary = `Expansión intravascular fisiológica con ${ml} mL de cristaloide (acumulado ${Math.round(totalMl)} mL): mejora precarga y PA (+${sysGain}/+${diaGain} mmHg)${gluNote}.`;
+      if (glasgow < 15 && bp.sys < hypotensionSbpLimit) glasgow = clamp(glasgow + 1, 3, 15);
+      const isPermissiveBleedCaution = (isActiveBleed || isEctopicRuptured) && totalMl >= 2000;
+      effectSeverity = isPermissiveBleedCaution
+        ? 'parcial'
+        : sysGain >= 6 || salineGlucoseDrop >= 15 || isDkaOrHhs
+          ? 'mejoria'
+          : 'parcial';
+      summary = isPermissiveBleedCaution
+        ? `Expansión intravascular (${ml} mL; acumulado ${Math.round(totalMl)} mL), pero en hemorragia activa ≥2 L sin transfusión de glóbulos rojos ni hemostasia definitiva aumenta el riesgo de coagulopatía dilucional.`
+        : `Expansión intravascular fisiológica con ${ml} mL de cristaloide (acumulado ${Math.round(totalMl)} mL): mejora precarga y PA (+${sysGain}/+${diaGain} mmHg)${gluNote}.`;
       patientFeelingNote = isPediatric
         ? 'Con el suero en la venita mi niño ya no está tan frío ni decaído, se ve un poco más despejado.'
         : salineGlucoseDrop >= 18
@@ -2691,24 +2854,36 @@ export function applyStatIntervention(
   }
   // 13. OPIOIDES / BENZODIACEPINAS (acumulativos con carga SNC unificada descontando antídotos)
   else if (/\b(morfina|fentanilo|tramadol|diazepam|lorazepam|midazolam|clonazepam|alprazolam)\b/.test(drugNorm)) {
-    const isFentanyl = drugNorm.includes('fentanilo');
-    const isMorphine = drugNorm.includes('morfina');
-    const isTramadol = drugNorm.includes('tramadol');
-    const isLorazOrMidaz = /\b(lorazepam|midazolam|clonazepam)\b/.test(drugNorm);
-    const isDiazepam = drugNorm.includes('diazepam');
+    const opioidOrBenzoRegex = /\b(fentanilo|morfina|tramadol|lorazepam|midazolam|clonazepam|diazepam|alprazolam)\b/;
+    const doseMatchedAgent = doseNorm.match(opioidOrBenzoRegex)?.[0];
+    const drugMatchedAgent = drugNorm.match(opioidOrBenzoRegex)?.[0] || '';
+    const activeAgent = doseMatchedAgent && drugNorm.includes(doseMatchedAgent) ? doseMatchedAgent : drugMatchedAgent;
+
+    const isFentanyl = activeAgent === 'fentanilo';
+    const isMorphine = activeAgent === 'morfina';
+    const isTramadol = activeAgent === 'tramadol';
+    const isLorazOrMidaz = /\b(lorazepam|midazolam|clonazepam)\b/.test(activeAgent);
+    const isDiazepam = activeAgent === 'diazepam';
+
+    const specificParsed =
+      extractDrugSpecificDose(
+        new RegExp(`\\b${activeAgent}\\b`),
+        { id: '', drug: cleanDrug, dose: cleanDose, route: cleanRoute, frequency: '', duration: '' },
+        weightKg
+      ) || parsedDose;
 
     const defaultMg = isFentanyl ? 0.05 : isMorphine ? 4 : isLorazOrMidaz ? 2 : isTramadol ? 50 : 10;
-    const mg = parsedDose.mg ?? defaultMg;
+    const mg = specificParsed.mg ?? defaultMg;
     const mgPerKg = mg / weightKg;
 
     const addedMeq = isFentanyl ? mg * 100 : isTramadol ? mg * 0.1 : isMorphine ? mg : 0;
-    const addedDeq = drugNorm.includes('lorazepam')
+    const addedDeq = activeAgent === 'lorazepam'
       ? mg * 5
-      : drugNorm.includes('midazolam')
+      : activeAgent === 'midazolam'
         ? mg * 3.33
-        : drugNorm.includes('clonazepam')
+        : activeAgent === 'clonazepam'
           ? mg * 10
-          : isDiazepam || drugNorm.includes('alprazolam')
+          : isDiazepam || activeAgent === 'alprazolam'
             ? mg
             : 0;
 
@@ -2744,7 +2919,8 @@ export function applyStatIntervention(
       isCumulativeApnea;
 
     const isObstructiveContra = isObstructiveAirway && (isMorphine || isFentanyl || isDiazepam || isLorazOrMidaz);
-    const isHypotensiveContra = sys < 90 && (isMorphine || isDiazepam || isLorazOrMidaz);
+    const isHypotensiveContra = sys < hypotensionSbpLimit && (isMorphine || isDiazepam || isLorazOrMidaz);
+    const isEapMorphineHarm = isPulmonaryEdemaOrFluidOverload && isMorphine;
     const isNeuroOpioidContra =
       (isMorphine || isFentanyl || isTramadol) &&
       (isNeurologicEmergency || spo2 < 90 || (isInferiorStemi && isMorphine) || (isSerotoninSyndrome && (isTramadol || isFentanyl)));
@@ -2763,7 +2939,7 @@ export function applyStatIntervention(
       (isDiazepam && mg >= 100) ||
       isCumulativeFulminant;
 
-    if (lethalOpioid || lethalBenzo || severeOpioid || severeBenzo || isObstructiveContra || isHypotensiveContra || isNeuroOpioidContra || isNeuroBenzoContra) {
+    if (lethalOpioid || lethalBenzo || severeOpioid || severeBenzo || isObstructiveContra || isHypotensiveContra || isEapMorphineHarm || isNeuroOpioidContra || isNeuroBenzoContra) {
       const isApneaLevel = lethalOpioid || lethalBenzo;
       rr = clamp(rr - (isApneaLevel ? 14 : 7), isApneaLevel ? 4 : 7, 40);
       spo2 = clamp(spo2 - (isApneaLevel ? 22 : 7), 65, 100);
@@ -2777,6 +2953,8 @@ export function applyStatIntervention(
         isImmediateDeath = true;
         immediateDeathReason = `Apnea fulminante y paro cardiorrespiratorio hipóxico irreversible tras sobredosis/acumulación extrema de ${cleanDrug} (${cleanDose}${cumTag}).`;
         summary = `Muerte inmediata por apnea fulminante y paro hipóxico tras sobredosis/acumulación de ${cleanDrug} (${cleanDose}).`;
+      } else if (isEapMorphineHarm) {
+        summary = `¡ERROR SEGÚN GUÍAS ESC EN EDEMA AGUDO DE PULMÓN!: Morfina de rutina en insuficiencia cardíaca aguda (Clase III - Daño) provoca depresión respiratoria, náuseas/vómitos, necesidad de ventilación mecánica invasiva e hipotensión; priorizar Nitroglicerina IV, Furosemida y VNI.`;
       } else if (isInferiorStemi && isMorphine) {
         summary = `¡ERROR EN IAM INFERIOR/VD!: Morfina (${cleanDose}) reduce peligrosamente la precarga ventricular derecha e inhibe absorción de antiagregantes P2Y12 (PA cae a ${sys}/${dia} mmHg).`;
       } else if (isNeuroOpioidContra || isNeuroBenzoContra) {
@@ -2808,15 +2986,25 @@ export function applyStatIntervention(
       patientFeelingNote = isPediatric
         ? 'Ya cedieron las sacudidas y el niño está más tranquilo, doctor.'
         : 'Ya me disminuyó bastante el temblor y la agitación, doctor; me siento más calmado.';
+    } else if (isTramadol && (isIschemicChestPain || isAorticDissection)) {
+      effectSeverity = 'sin_cambio';
+      summary = `Tramadol (${cleanDose}) inadecuado en ${isAorticDissection ? 'Disección Aórtica' : 'Síndrome Coronario Agudo'}: analgesia lenta/errática, alto riesgo emético y descarga serotoninérgica (utilizar opioide potente IV titulado como Fentanilo o Morfina según estabilidad).`;
+      patientFeelingNote = 'Sigo con el mismo dolor intenso en el pecho y ahora algo de náuseas, doctor.';
+    } else if (isPeritonealOrSurgicalAbdomen && (isMorphine || isFentanyl)) {
+      hr = clamp(hr - (hr > 96 ? 8 : 3), 55, 165);
+      rr = clamp(rr - (rr > 20 ? 2 : 0), 12, 38);
+      effectSeverity = 'parcial';
+      summary = `Analgesia opioide IV titulada (${cleanDose} de ${cleanDrug}) en abdomen agudo/quirúrgico: alivia el dolor agudo sin impedir el diagnóstico, pero es medida coadyuvante que NO sustituye reanimación hídrica, antibióticos ni resolución quirúrgica.`;
+      patientFeelingNote = 'Ya me bajó un poco ese dolor tan agudo, doctor, pero sigo muy enfermo del abdomen.';
     } else if (
       (isMorphine || isFentanyl || isTramadol) &&
-      (isSeverePainEmergency || (isIschemicChestPain && !isInferiorStemi) || (isPulmonaryEdemaOrFluidOverload && isMorphine && sys >= 115))
+      (isSeverePainEmergency || (isIschemicChestPain && !isInferiorStemi))
     ) {
       hr = clamp(hr - (hr > 96 ? 10 : 4), 55, 165);
       rr = clamp(rr - (rr > 20 ? 2 : 0), 12, 38);
       if ((isMorphine || isFentanyl) && sys > 110) sys = clamp(sys - 6, 88, 220);
       effectSeverity = 'mejoria';
-      summary = `Analgesia opioide titulada (${cleanDose} de ${cleanDrug}) en dolor agudo severo / edema pulmonar con PA preservada: atenúa respuesta simpática al dolor.`;
+      summary = `Analgesia opioide titulada (${cleanDose} de ${cleanDrug}) en dolor agudo severo / síndrome isquémico sin compromiso de VD: atenúa descarga simpática por dolor.`;
       patientFeelingNote = isPediatric
         ? 'Ya se quedó más calmadito y sin tanto dolor agudo, doctor.'
         : 'Ya me calmó bastante el dolor intenso, doctor; respiro un poco menos angustiado.';
@@ -2852,7 +3040,15 @@ export function applyStatIntervention(
       effectSeverity = totalAsaMg >= 1500 ? 'reaccion_adversa' : 'parcial';
       summary = `Acumulación de Ácido Acetilsalicílico (${Math.round(totalAsaMg)} mg acumulados): alto riesgo de gastritis erosiva y hemorragia digestiva alta sin beneficio antiagregante adicional.`;
       patientFeelingNote = 'Siento bastante ardor y dolor en la boca del estómago con tanta aspirina, doctor.';
-    } else if (isIschemicChestPain || isIschemicStroke || diagNorm.includes('kawasaki')) {
+    } else if (isIschemicStroke) {
+      effectSeverity = 'parcial';
+      summary = `Antiagregación (${cleanDrug} ${cleanDose}) en sospecha de EVC Isquémico: solo válida DESPUÉS de descartar hemorragia intracerebral con TC craneal urgente (y debe posponerse 24 horas si se administra trombólisis IV).`;
+      patientFeelingNote = 'Ya tragué la tableta indicada mientras esperan la tomografía, doctor.';
+    } else if (strictDiagNorm.includes('takotsubo')) {
+      effectSeverity = 'parcial';
+      summary = `Antiagregación inicial (${cleanDrug} ${cleanDose}) dentro del protocolo de dolor torácico isquémico mientras la coronariografía descarta placa obstructiva y confirma miocardiopatía de Takotsubo.`;
+      patientFeelingNote = 'Ya tomé la pastilla indicada para el corazón, doctor, sigo vigilado.';
+    } else if (isIschemicChestPain || strictDiagNorm.includes('kawasaki')) {
       hr = clamp(hr - (hr > 85 ? 4 : 2), 50, 170);
       sys = clamp(sys - (sys > 125 ? 4 : 2), 68, 220);
       effectSeverity = 'mejoria';
@@ -2865,7 +3061,7 @@ export function applyStatIntervention(
       patientFeelingNote = 'Ya me tragué la pastilla, doctor, aunque no siento mejoría de mis síntomas.';
     }
   }
-  // 15. PARACETAMOL / METAMIZOL (fisiopatología de fiebre infecciosa vs hipertermia endocrina vs sepsis)
+  // 15. PARACETAMOL / METAMIZOL (fisiopatología de fiebre infecciosa vs hipertermia endocrina vs sepsis/dengue/abdomen quirúrgico)
   else if (/\b(paracetamol|acetaminofen|antipiret|metamizol|dipirona)\b/.test(drugNorm)) {
     const mg = parsedDose.mg ?? 1000;
     const isParacetamol = /\b(paracetamol|acetaminofen|antipiret)\b/.test(drugNorm);
@@ -2880,7 +3076,7 @@ export function applyStatIntervention(
       isParacetamol && (totalParaMg >= 4000 || (isPediatric && totalParaMg / weightKg >= 75));
     const isCumulativeMetamizol = isMetamizol && (totalMetaMg >= 4000 || totalMetaCount >= 3);
 
-    if ((isMetamizol && sys < 100) || isCumulativeMetamizol) {
+    if ((isMetamizol && sys < hypotensionSbpLimit) || isCumulativeMetamizol) {
       sys = clamp(sys - (isCumulativeMetamizol ? 18 : 22), 54, 220);
       dia = clamp(dia - 12, 32, 130);
       hr = clamp(hr + (isCumulativeMetamizol ? 16 : 18), 50, 178);
@@ -2914,11 +3110,21 @@ export function applyStatIntervention(
         sys = clamp(sys - 6, 85, 220);
         dia = clamp(dia - 3, 50, 130);
       }
-      const isSepticShockMasking = isSepsisOrBacterialEmergency && (bp.sys < 100 || glasgow < 15 || isMeningitis);
-      effectSeverity = isSepticShockMasking ? 'parcial' : 'mejoria';
+      const isSymptomaticMaskingOnly =
+        isSepsisOrBacterialEmergency ||
+        isDengue ||
+        isMalariaSevere ||
+        isPeritonealOrSurgicalAbdomen ||
+        isMeningitis ||
+        isSepticArthritis ||
+        strictDiagNorm.includes('neutropenia') ||
+        /\b(neumonia|pielonefritis|colangitis|endocarditis)\b/.test(strictDiagNorm) ||
+        bp.sys < hypotensionSbpLimit ||
+        glasgow < 15;
+      effectSeverity = isSymptomaticMaskingOnly ? 'parcial' : 'mejoria';
       const cumNote = isParacetamol && cum.paracetamolMg > 0 ? ` (acumulado ${Math.round(totalParaMg)} mg)` : isMetamizol && cum.metamizolMg > 0 ? ` (acumulado ${Math.round(totalMetaMg)} mg)` : '';
-      summary = isSepticShockMasking
-        ? `Descenso térmico sintomático (-${tempDrop.toFixed(1)} °C) tras ${cleanDrug}${cumNote}, pero NO trata la sepsis/infección grave subyacente (prioridad: antimicrobiano IV en la primera hora y soporte de perfusión).`
+      summary = isSymptomaticMaskingOnly
+        ? `Control térmico sintomático (-${tempDrop.toFixed(1)} °C) tras ${cleanDrug}${cumNote}: mejora una cifra en el monitor pero NO trata la infección, fuga capilar ni el foco quirúrgico subyacente.`
         : `Descenso térmico progresivo (-${tempDrop.toFixed(1)} °C) y alivio de taquicardia febril tras ${cleanDose} de ${cleanDrug}${cumNote}.`;
       patientFeelingNote = isPediatric
         ? 'Ya le empezó a bajar un poco la calentura al niño, doctor; empezó a sudar suave y se queja menos.'
@@ -2935,7 +3141,7 @@ export function applyStatIntervention(
       patientFeelingNote = 'No sentí cambio relevante con esa medicina, doctor.';
     }
   }
-  // 16. ANTIEMÉTICOS (gating por QTc/Parkinson/Glaucoma/HPB y utilidad real)
+  // 16. ANTIEMÉTICOS (gating por QTc/Parkinson/Glaucoma/HPB y utilidad fisiopatológica real)
   else if (/\b(ondansetron|metoclopramida|dimenhidrinato|antiemet)\b/.test(drugNorm)) {
     if (drugNorm.includes('ondansetron')) {
       const mg = parsedDose.mg ?? 4;
@@ -2959,7 +3165,7 @@ export function applyStatIntervention(
         patientFeelingNote = isPediatric
           ? 'Parece que ya se le calmó el asco al niño, doctor; no ha vuelto a tener arcadas.'
           : 'Ya se me asentó bastante el estómago y se me quitó esa sensación de querer vomitar, doctor.';
-      } else if (/\b(nausea|vomito|arcada|emesis|cetoacidosis|pancreatitis|apendicitis|colecistitis|colangitis|dengue|infarto)\b/.test(diagNorm)) {
+      } else if (isGiUlcerOrBleedOrGerd || /\b(nausea|vomito|arcada|emesis|cetoacidosis|pancreatitis|apendicitis|colecistitis|colangitis|dengue|infarto)\b/.test(diagNorm)) {
         effectSeverity = 'parcial';
         summary = `Coadyuvante antiemético (${cleanDrug} ${cleanDose}${cumNote}): controla náuseas secundarias sin resolver la causa orgánica de urgencia.`;
         patientFeelingNote = 'Me calmó un poco el asco, doctor, pero sigo con mi malestar principal.';
@@ -2972,20 +3178,31 @@ export function applyStatIntervention(
       const mg = parsedDose.mg ?? 10;
       const totalMetoMg = mg + cum.metoclopramidaMg;
       const totalMetoCount = 1 + cum.metoclopramidaCount;
+      const isGiBleedHarm =
+        isActiveBleed && (diagNorm.includes('hemorragia digestiva') || diagNorm.includes('ulcera peptica'));
       if (totalMetoMg >= 30 || totalMetoCount >= 3) {
         hr = clamp(hr + 16, 55, 178);
         sys = clamp(sys + 8, 65, 225);
         effectSeverity = 'reaccion_adversa';
         summary = `Síndrome extrapiramidal agudo por acumulación de Metoclopramida (${cleanDose}, acumulado ${Math.round(totalMetoMg)} mg): distonía cervical/facial, crisis oculógira y acatisia severa.`;
         patientFeelingNote = '¡Doctor, se me tuerce el cuello solo, los ojos se me van para arriba y siento una desesperación terrible!';
-      } else if (isNauseaVertigoPrimary) {
+      } else if (isGiBleedHarm) {
+        hr = clamp(hr + 10, 55, 178);
+        effectSeverity = 'reaccion_adversa';
+        summary = `¡ERROR EN HEMORRAGIA DIGESTIVA / ÚLCERA ACTIVA!: Metoclopramida (${cleanDose}) estimula el peristaltismo y aumenta la presión gástrica/riesgo de resangrado o perforación (la prioridad es reanimación, IBP IV y endoscopia).`;
+        patientFeelingNote = 'Doctor, sentí más retorcijones y ganas de vomitar después de esa ampolla.';
+      } else if (/vertigo/.test(strictDiagNorm)) {
+        effectSeverity = 'sin_cambio';
+        summary = `Metoclopramida (${cleanDose}) en cuadro vertiginoso: no suprime el estímulo vestibular central (priorizar maniobra de reposición canalicular en VPPB o sedante vestibular específico).`;
+        patientFeelingNote = 'Me sigue dando vueltas todo igual, doctor.';
+      } else if (/\b(migran|hiperemesis|gastroparesia)\b/.test(diagNorm)) {
         hr = clamp(hr - (hr > 98 ? 5 : 3), 52, 165);
         effectSeverity = 'mejoria';
         summary = `Procinético y control emético con Metoclopramida (${cleanDose}; acumulado ${Math.round(totalMetoMg)} mg).`;
         patientFeelingNote = 'Ya se me calmó un poco la náusea y el malestar estomacal, doctor.';
-      } else if (/\b(nausea|vomito|gastroparesia|migran)\b/.test(diagNorm)) {
+      } else if (isNauseaVertigoPrimary || /\b(nausea|vomito)\b/.test(diagNorm)) {
         effectSeverity = 'parcial';
-        summary = `Antiemético coadyuvante (${cleanDrug} ${cleanDose}): atenúa náusea sin tratar la causa primaria.`;
+        summary = `Antiemético coadyuvante (${cleanDrug} ${cleanDose}): atenúa náusea sin tratar la causa primaria (en gastroenteritis pediátrica se prefiere Ondansetrón por menor riesgo extrapiramidal).`;
         patientFeelingNote = 'Me asentó ligeramente el estómago, doctor.';
       } else {
         effectSeverity = 'sin_cambio';
@@ -2996,6 +3213,7 @@ export function applyStatIntervention(
       const mg = parsedDose.mg ?? 50;
       const totalDimMg = mg + cum.dimenhidrinatoMg;
       const totalDimCount = 1 + cum.dimenhidrinatoCount;
+      const isBppv = diagNorm.includes('vertigo posicional') || diagNorm.includes('vppb');
       if (totalDimMg >= 200 || totalDimCount >= 3) {
         glasgow = clamp(glasgow - 3, 8, 15);
         hr = clamp(hr + 18, 55, 178);
@@ -3007,6 +3225,10 @@ export function applyStatIntervention(
         effectSeverity = 'reaccion_adversa';
         summary = `Contraindicación anticolinérgica/sedante de Dimenhidrinato (${cleanDose}) en este cuadro: deteriora el estado de alerta o agrava bloqueo colinérgico.`;
         patientFeelingNote = 'Me siento más aturdido, con la boca seca y peor después de esa dosis, doctor.';
+      } else if (isBppv) {
+        effectSeverity = 'parcial';
+        summary = `Dimenhidrinato (${cleanDose}) en VPPB: atenúa náusea aguda transitoria, pero el tratamiento resolutivo es la maniobra de reposición de Epley y su uso sostenido retrasa la compensación vestibular central.`;
+        patientFeelingNote = 'Me dio algo de sueño y menos náusea, aunque al girar la cabeza sigo sintiendo el vértigo, doctor.';
       } else if (/\b(vertigo|cinetosis|vestibular|meniere)\b/.test(diagNorm) || isNauseaVertigoPrimary) {
         hr = clamp(hr - (hr > 98 ? 5 : 3), 52, 165);
         glasgow = clamp(glasgow - (glasgow > 13 ? 1 : 0), 10, 15);
@@ -3020,7 +3242,7 @@ export function applyStatIntervention(
       }
     }
   }
-  // 17. CORTICOIDES SISTÉMICOS (indicaciones específicas: crisis suprarrenal, coma mixedematoso, tormenta tiroidea, obstrucción vía aérea, anafilaxia, meningitis, arteritis temporal)
+  // 17. CORTICOIDES SISTÉMICOS (indicaciones específicas; NUNCA en bronquiolitis ni sangrado digestivo activo salvo PTI)
   else if (/\b(hidrocortisona|dexametasona|metilprednisolona|prednisona|prednisolona|corticoide|esteroide)\b/.test(drugNorm)) {
     const isDex = drugNorm.includes('dexametasona');
     const isMetil = drugNorm.includes('metilprednisolona');
@@ -3045,18 +3267,39 @@ export function applyStatIntervention(
 
     const gluStr = steroidGluDelta > 0 ? ` con hiperglucemia corticoidea (+${steroidGluDelta} mg/dL → ${glucose} mg/dL)` : '';
     const isSevereHyperCrisis = typeof glucose === 'number' && glucose >= 380 && isDkaOrHhs;
-    const isCumulativeSteroidToxicity =
-      totalHydroMg >= 1000 ||
-      (totalHydroMg >= 600 && (sys >= 165 || (typeof glucose === 'number' && glucose >= 250)));
+    const isPulseIndication =
+      diagNorm.includes('arteritis de celulas gigantes') ||
+      diagNorm.includes('lupus') ||
+      diagNorm.includes('nefritis') ||
+      diagNorm.includes('esclerosis multiple');
+    const isCumulativeSteroidToxicity = isPulseIndication
+      ? totalHydroMg >= 6500
+      : totalHydroMg >= 1000 ||
+        (totalHydroMg >= 600 && (sys >= 165 || (typeof glucose === 'number' && glucose >= 250)));
+    const isSteroidBleedContra =
+      isActiveBleed &&
+      !isAdrenalCrisis &&
+      !isAnaphylaxis &&
+      !diagNorm.includes('stevens') &&
+      !diagNorm.includes('purpura trombocitopenica');
+    const hasPriorMeningitisAbx =
+      isMeningitis &&
+      previousHistory.some(
+        (h) =>
+          h.effectSeverity !== 'reaccion_adversa' &&
+          /\b(ceftriaxona|cefotaxima|vancomicina|ampicilina|meropenem)\b/.test(norm(h.drug))
+      );
 
-    if (isDengue || isSevereHyperCrisis || isCumulativeSteroidToxicity) {
+    if (isDengue || isSevereHyperCrisis || isCumulativeSteroidToxicity || isSteroidBleedContra) {
       effectSeverity = 'reaccion_adversa';
       summary = isDengue
         ? `Uso perjudicial de corticoide sistémico (${cleanDrug}) en Dengue: aumenta riesgo de sangrado digestivo e inmunosupresión${gluStr}.`
-        : isCumulativeSteroidToxicity
-          ? `Toxicidad corticoidea acumulativa (${Math.round(totalHydroMg)} mg equiv. hidrocortisona): hiperglucemia severa, retención hidrosalina/crisis HTA y alto riesgo de hemorragia digestiva${gluStr}.`
-          : `Corticoide sistémico (${cleanDrug}) empeora descompensación hiperglucémica severa en CAD/EHH${gluStr}.`;
-      patientFeelingNote = isDengue || isCumulativeSteroidToxicity
+        : isSteroidBleedContra
+          ? `¡ERROR GASTROLESIVO!: Corticoide sistémico (${cleanDrug}) en hemorragia digestiva o úlcera activa retrasa cicatrización mucosa y eleva riesgo de resangrado${gluStr}.`
+          : isCumulativeSteroidToxicity
+            ? `Toxicidad corticoidea acumulativa (${Math.round(totalHydroMg)} mg equiv. hidrocortisona): hiperglucemia severa, retención hidrosalina/crisis HTA y alto riesgo de hemorragia digestiva${gluStr}.`
+            : `Corticoide sistémico (${cleanDrug}) empeora descompensación hiperglucémica severa en CAD/EHH${gluStr}.`;
+      patientFeelingNote = isDengue || isCumulativeSteroidToxicity || isSteroidBleedContra
         ? 'Siento ardor intenso en el estómago, mucha sed y dolor de cabeza, doctor.'
         : 'Tengo más sed y la boca más seca después de esa ampolla, doctor.';
     } else if (isAdrenalCrisis || isMyxedemaComa) {
@@ -3071,13 +3314,28 @@ export function applyStatIntervention(
       effectSeverity = 'mejoria';
       summary = `Corticoide IV en Tormenta Tiroidea (${cleanDrug} ${cleanDose}): inhibe conversión periférica T4→T3 y cubre reserva suprarrenal agotada${gluStr}.`;
       patientFeelingNote = 'Sigo agitado pero bajo manejo integral de tormenta tiroidea, doctor.';
-    } else if (diagNorm.includes('arteritis de celulas gigantes') || isMeningitis || isObstructiveAirway || isAnaphylaxis || diagNorm.includes('crup') || diagNorm.includes('stevens')) {
-      if (isObstructiveAirway || diagNorm.includes('crup')) {
+    } else if (isBronchiolitis) {
+      effectSeverity = 'sin_cambio';
+      summary = `Corticoide sistémico (${cleanDrug} ${cleanDose}) en Bronquiolitis viral: las guías AAP/NICE recomiendan NO administrarlo por falta de beneficio clínico en lactantes${gluStr}.`;
+      patientFeelingNote = 'Mi bebé sigue respirando igual, doctor.';
+    } else if (diagNorm.includes('arteritis de celulas gigantes') || isMeningitis || isBronchospasm || isCroup || isAnaphylaxis || diagNorm.includes('stevens') || diagNorm.includes('purpura trombocitopenica')) {
+      if (isBronchospasm || isCroup) {
         rr = clamp(rr - (rr > 22 ? 2 : 0), 14, 42);
         spo2 = clamp(spo2 + (spo2 < 95 ? 2 : 0), 74, 99);
       }
-      effectSeverity = isMeningitis || diagNorm.includes('arteritis de celulas gigantes') || isObstructiveAirway ? 'mejoria' : 'parcial';
-      summary = `Corticoide sistémico indicado (${cleanDrug} ${cleanDose}): reduce inflamación meníngea/vascular/bronquial (inicio progresivo en 2-4 h)${gluStr}.`;
+      effectSeverity =
+        diagNorm.includes('arteritis de celulas gigantes') ||
+        diagNorm.includes('purpura trombocitopenica') ||
+        isBronchospasm ||
+        isCroup ||
+        (isMeningitis && hasPriorMeningitisAbx)
+          ? 'mejoria'
+          : 'parcial';
+      summary = isMeningitis && !hasPriorMeningitisAbx
+        ? `Coadyuvante neuroprotector indicado (${cleanDrug} ${cleanDose}) en Meningitis bacteriana: atenúa inflamación subaracnoidea (iniciar junto o antes del antibiótico IV empírico, al cual NUNCA sustituye)${gluStr}.`
+        : isAnaphylaxis
+          ? `Corticoide coadyuvante (${cleanDrug} ${cleanDose}) en anafilaxia: ayuda a prevenir respuesta bifásica tardía, pero NUNCA sustituye a la Adrenalina IM de rescate${gluStr}.`
+          : `Corticoide sistémico indicado (${cleanDrug} ${cleanDose}): reduce inflamación vascular/bronquial/subglótica/inmune (inicio progresivo)${gluStr}.`;
       patientFeelingNote = isPediatric
         ? 'Ya le pasaron la dosis para desinflamar; mi niño parece tolerarla bien.'
         : 'Sentí un poquito de calor al pasar el medicamento, doctor.';
@@ -3087,13 +3345,18 @@ export function applyStatIntervention(
       patientFeelingNote = 'No noto mejoría de mis síntomas con esa ampolla, doctor.';
     }
   }
-  // 18. SULFATO DE MAGNESIO IV (eclampsia/preeclampsia severa, estatus asmático, Torsades/TV polimorfa)
+  // 18. SULFATO DE MAGNESIO IV (eclampsia/preeclampsia severa, asma grave refractaria, Torsades/TV polimorfa)
   else if (/\b(sulfato de magnesio|magnesio|mgso4)\b/.test(drugNorm)) {
     const grams = parsedDose.mg ? parsedDose.mg / 1000 : 4;
     const totalGrams = grams + cum.unreversedMgGrams;
     const renalRisk = isRenalFailureOrHyperK && totalGrams >= 4;
     const severeMg = grams >= 8 || totalGrams >= 10 || (isPediatric && (grams * 1000) / weightKg >= 100) || renalRisk;
     const lethalMg = grams >= 12 || totalGrams >= 16;
+    const isSevereAsthmaMg =
+      diagNorm.includes('asma') && (spo2 < 92 || rr >= 26 || /grave|sever|estatus|status/.test(diagNorm));
+    const isTorsadesOrHypoMgVt =
+      isVentricularTachycardia &&
+      (isTakotsuboOrQtcRisk || diagNorm.includes('torsades') || diagNorm.includes('hipomagnes'));
 
     if (severeMg) {
       const scale = lethalMg ? 2.2 : 1.0;
@@ -3115,23 +3378,29 @@ export function applyStatIntervention(
         glasgow <= 9
           ? '[Alerta crítica: paciente inconsciente con flacidez muscular generalizada y bradipnea severa por hipermagnesemia]'
           : 'Doctor, siento mucho bochorno, muchísima pesadez muscular y me cuesta trabajo mantener los ojos abiertos o respirar hondo...';
-    } else if (isPreeclampsiaOrEclampsia || isObstructiveAirway || isVentricularTachycardia || isAlcoholWithdrawal) {
+    } else if (isPreeclampsiaOrEclampsia || isSevereAsthmaMg || isTorsadesOrHypoMgVt) {
       sys = clamp(sys - (sys > 140 ? 10 : 5), 78, 220);
       dia = clamp(dia - (dia > 90 ? 6 : 3), 46, 130);
-      if (isObstructiveAirway) {
+      if (isSevereAsthmaMg) {
         rr = clamp(rr - (rr > 22 ? 3 : 1), 12, 40);
         spo2 = clamp(spo2 + (spo2 < 94 ? 3 : 0), 74, 99);
       }
       effectSeverity = 'mejoria';
-      summary = `Neuroprotección en eclampsia/preeclampsia severa, estabilización de membrana o broncodilatación adyuvante tras Sulfato de Magnesio (${cleanDose}, acumulado ${totalGrams.toFixed(1)} g).`;
+      summary = isPreeclampsiaOrEclampsia
+        ? `Neuroprotección anticonvulsivante con Sulfato de Magnesio (${cleanDose}; acumulado ${totalGrams.toFixed(1)} g): previene/yugula eclampsia (nota: no sustituye al antihipertensivo IV si PA ≥160/110).`
+        : `Estabilización de membrana o broncodilatación adyuvante en crisis grave tras Sulfato de Magnesio (${cleanDose}, acumulado ${totalGrams.toFixed(1)} g).`;
       patientFeelingNote =
         'Sentí bastante calor en la cara y el brazo mientras pasaba el suero, doctor, pero ya me siento más tranquilo.';
+    } else if (isVentricularTachycardia) {
+      effectSeverity = 'parcial';
+      summary = `Optimización electrolítica coadyuvante con MgSO₄ (${cleanDose}) en Taquicardia Ventricular monomórfica: la primera línea antiarrítmica en TV estable es Amiodarona IV (o cardioversión si inestable).`;
+      patientFeelingNote = 'Sentí calor transitorio en el brazo al pasar el suero, doctor.';
     } else {
       sys = clamp(sys - 6, 62, 220);
       dia = clamp(dia - 4, 36, 130);
       hr = clamp(hr + 4, 48, 175);
-      effectSeverity = sys < 90 ? 'reaccion_adversa' : 'sin_cambio';
-      summary = `Sulfato de Magnesio (${cleanDose}, acumulado ${totalGrams.toFixed(1)} g) sin indicación específica (eclampsia, asma refractaria ni Torsades): solo vasodilatación y bochorno transitorio.`;
+      effectSeverity = sys < hypotensionSbpLimit ? 'reaccion_adversa' : 'sin_cambio';
+      summary = `Sulfato de Magnesio (${cleanDose}, acumulado ${totalGrams.toFixed(1)} g) sin indicación específica (eclampsia/preeclampsia severa, asma grave refractaria ni Torsades): solo vasodilatación y bochorno transitorio.`;
       patientFeelingNote = 'Sentí calor y bochorno al pasar ese suero, doctor, pero mi cuadro sigue igual.';
     }
   }
@@ -3381,9 +3650,25 @@ export function applyStatIntervention(
         effectSeverity = hr >= 52 ? 'mejoria' : 'reaccion_adversa';
         summary = `Carga antiarrítmica IV (${cleanDrug} ${cleanDose}; acumulado ${totalMg.toFixed(2)} mg): supresión del foco ectópico ventricular y estabilización hemodinámica (FC ${hr} lpm).`;
         patientFeelingNote = 'El latido fuerte y rápido en el pecho se está controlando poco a poco, doctor.';
-      } else if ((drugNorm.includes('amiodarona') || drugNorm.includes('digoxina')) && (isAfibRvr || isSvt)) {
+      } else if (drugNorm.includes('digoxina') && isSvt) {
+        effectSeverity = 'sin_cambio';
+        summary = `Digoxina (${cleanDose}) en TSVP aguda: no revierte reentradas nodales de forma rápida en urgencias (utilizar maniobras vagales, Adenosina IV o betabloqueador/diltiazem).`;
+        patientFeelingNote = 'El corazón me sigue latiendo igual de rápido, doctor.';
+      } else if (drugNorm.includes('digoxina') && isAfibRvr) {
+        hr = clamp(hr - (hr > 110 ? 16 : 8), 60, 145);
+        effectSeverity = isPulmonaryEdemaOrFluidOverload ? 'mejoria' : 'parcial';
+        summary = isPulmonaryEdemaOrFluidOverload
+          ? `Control nodal coadyuvante con Digoxina (${cleanDose}) en Fibrilación Auricular con falla cardíaca aguda congestiva (sin inotropismo negativo; FC ${hr} lpm).`
+          : `Control nodal lento/parcial con Digoxina (${cleanDose}) en FA con RVR: en paciente sin falla cardíaca descompensada son preferibles betabloqueadores o diltiazem IV.`;
+        patientFeelingNote = 'Siento el pulso ligeramente menos rápido, doctor.';
+      } else if (drugNorm.includes('amiodarona') && isSvt) {
+        hr = clamp(hr - (hr > 120 ? 22 : 10), 62, 140);
+        effectSeverity = 'parcial';
+        summary = `Control parcial con Amiodarona (${cleanDose}) en TSVP: fármaco de segunda línea si fracasan maniobras vagales, Adenosina o bloqueadores nodales.`;
+        patientFeelingNote = 'Siento que bajó un poco el ritmo del pecho, doctor.';
+      } else if (drugNorm.includes('amiodarona') && isAfibRvr) {
         hr = clamp(hr - (hr > 110 ? 28 : 12), 58, 135);
-        sys = clamp(sys - (drugNorm.includes('amiodarona') ? 5 : 0), 68, 220);
+        sys = clamp(sys - 5, 68, 220);
         effectSeverity = hr >= 52 ? 'mejoria' : 'reaccion_adversa';
         summary = `Control de ritmo/respuesta ventricular con ${cleanDrug} (${cleanDose}): reduce FC a ${hr} lpm.`;
         patientFeelingNote = 'Siento el pulso más tranquilo y regular, doctor.';
@@ -3399,8 +3684,10 @@ export function applyStatIntervention(
         patientFeelingNote = 'No siento mejoría de mi cuadro con ese medicamento, doctor.';
       }
     }
-  } else if (/\b(alteplasa|tenecteplasa|estreptoquinasa|heparina|enoxaparina|warfarina|apixaban|rivaroxaban)\b/.test(drugNorm)) {
+  } else if (/\b(alteplasa|tenecteplasa|estreptoquinasa|heparina|enoxaparina|warfarina|apixaban|rivaroxaban|dabigatran|edoxaban)\b/.test(drugNorm)) {
     const isLytic = /\b(alteplasa|tenecteplasa|estreptoquinasa)\b/.test(drugNorm);
+    const isOralChronicAnticoag = /\b(warfarina|apixaban|rivaroxaban|dabigatran|edoxaban)\b/.test(drugNorm) && !isIV;
+    const isNonStemiOrUa = /\b(iamsest|scasest|angina inestable|infarto sin elevacion)\b/.test(diagNorm) || strictDiagNorm.includes('takotsubo');
     const totalLyticMg = isLytic ? (parsedDose.mg ?? 50) + cum.lyticMg : 0;
     const totalHepUi = drugNorm.includes('heparina') ? (parsedDose.ui ?? 5000) + cum.heparinaUi : 0;
     const totalEnoxMg = drugNorm.includes('enoxaparina') ? (parsedDose.mg ?? 40) + cum.enoxaparinaMg : 0;
@@ -3427,6 +3714,25 @@ export function applyStatIntervention(
       glasgow = clamp(glasgow - 6, 5, 9);
       summary = `Toxicidad hemorrágica acumulativa por anticoagulante/fibrinolítico (${cleanDose} de ${cleanDrug}): riesgo crítico de hemorragia intracerebral o sistémica mayor e inconsciencia (Glasgow ${glasgow}/15).`;
       patientFeelingNote = '[El paciente presentó cefalea explosiva súbita, sangrado activo y pérdida de conciencia tras sobrecarga anticoagulante/fibrinolítica]';
+    } else if (isLytic && (isNonStemiOrUa || (isAfibRvr && !isIschemicStroke && !isAcutePulmonaryEmbolism))) {
+      effectSeverity = 'reaccion_adversa';
+      sys = clamp(sys - 14, 62, 220);
+      hr = clamp(hr + 10, 55, 175);
+      summary = `¡ERROR CRÍTICO DE SEGURIDAD!: Fibrinolítico (${cleanDrug}) está CONTRAINDICADO en ${isAfibRvr ? 'Fibrilación Auricular' : 'IAMSEST / SCASEST / Angina Inestable'}: incrementa mortalidad y hemorragia intracerebral sin beneficio trombótico (indicar anticoagulación parenteral + estrategia invasiva).`;
+      patientFeelingNote = 'Doctor, empecé a notar dolor de cabeza fuerte y sangrado leve en las encías...';
+    } else if (isLytic && isAcutePulmonaryEmbolism && bp.sys >= 95) {
+      effectSeverity = 'reaccion_adversa';
+      sys = clamp(sys - 12, 65, 220);
+      summary = `¡RIESGO HEMORRÁGICO INJUSTIFICADO!: Fibrinólisis sistémica (${cleanDrug}) en TEP hemodinámicamente estable (PAS ${bp.sys} mmHg ≥95) eleva hemorragia mayor sin superioridad sobre Heparina/Enoxaparina parenteral.`;
+      patientFeelingNote = 'Doctor, me siento algo mareado y noté sangrado en el sitio de la venoclisis.';
+    } else if (isOralChronicAnticoag) {
+      effectSeverity = 'sin_cambio';
+      summary = `Anticoagulante oral (${cleanDrug} ${cleanDose}) no logra anticoagulación STAT inmediata en urgencia trombótica aguda (requiere Heparina no fraccionada o Enoxaparina parenteral).`;
+      patientFeelingNote = 'Ya tragué la pastilla, doctor, pero el cuadro agudo requiere acción inmediata.';
+    } else if (isIschemicStroke && isLytic) {
+      effectSeverity = 'mejoria';
+      summary = `Trombólisis IV (${cleanDrug} ${cleanDose}) en EVC Isquémico: solo válida tras descartar hemorragia en TC craneal urgente, dentro de ventana ≤4.5 h y con PA controlada <185/110 mmHg.`;
+      patientFeelingNote = 'Ya me iniciaron el suero trombolítico, doctor, sigo quieto y vigilado.';
     } else if (isIschemicChestPain || isIschemicStroke || isAcutePulmonaryEmbolism || isAfibRvr || strictDiagNorm.includes('trombosis')) {
       effectSeverity = 'mejoria';
       summary = `Terapia antitrombótica/reperfusión indicada (${cleanDose} de ${cleanDrug}) iniciada oportunamente para limitar trombo o revascularizar; vigilar datos de sangrado.`;
@@ -3756,9 +4062,14 @@ export function applyStatIntervention(
       const totalAbxCount = 1 + cum.antibioticCount;
       const isVancoFast = drugNorm.includes('vancomicina') && ((parsedDose.mg ?? 1000) >= 1500 || /\brapida|bolo\b/.test(`${doseNorm} ${freqNorm}`));
       const isGiantDose = parsedDose.mg !== null && parsedDose.mg >= 10000;
-      const isBacterialFocus =
+      const isCriticalBacterialFocus =
         isSepsisOrBacterialEmergency ||
-        /\b(neumonia|pielonefritis|colangitis|meningitis|endocarditis|apendicitis|colecistitis|cistitis|faringoamigdalitis|otitis|sinusitis|erisipela|celulitis|absceso|artritis septica|sepsis|neutropenia|sifilis|gonorrea|clamidia|salmonel|shigel|colera|leptospir|ricketts|brucel|tuberculosis|diverticulitis|osteomielitis)\b/.test(
+        /\b(neumonia|pielonefritis|colangitis|meningitis|endocarditis|apendicitis|colecistitis|absceso|artritis septica|sepsis|neutropenia|diverticulitis|erisipela|celulitis|osteomielitis|peritonitis|pelvica)\b/.test(
+          strictDiagNorm
+        );
+      const isMildOutpatientBacterial =
+        !isCriticalBacterialFocus &&
+        /\b(cistitis|faringoamigdalitis|otitis|sinusitis|sifilis|gonorrea|clamidia|salmonel|shigel|colera|leptospir|ricketts|brucel|tuberculosis)\b/.test(
           strictDiagNorm
         );
 
@@ -3786,13 +4097,17 @@ export function applyStatIntervention(
         effectSeverity = 'reaccion_adversa';
         summary = `Acumulación antimicrobiana sin intervalo seguro (${totalAbxCount} dosis antibióticas STAT en la misma ventana aguda): riesgo de toxicidad renal/hepática y disbiosis sin mayor eficacia bactericida.`;
         patientFeelingNote = 'Siento náuseas y malestar en el estómago con tantos antibióticos seguidos por la vena, doctor.';
-      } else if (isBacterialFocus) {
+      } else if (isCriticalBacterialFocus) {
         if (temp >= 37.8) temp = Number(clamp(temp - 0.2, 36.2, 41.5).toFixed(1));
         effectSeverity = 'mejoria';
         summary = `Primera dosis antimicrobiana oportuna (${cleanDrug} ${cleanDose}) en la hora de oro: controla progresivamente la carga bacteriana del foco infeccioso.`;
         patientFeelingNote = isPediatric
           ? 'Ya le pasaron la primera dosis del antibiótico por la vena, doctor; el niño sigue bajo vigilancia.'
           : 'Ya me pasaron ese antibiótico por la vena, doctor; estoy bajo vigilancia mientras empieza a actuar.';
+      } else if (isMildOutpatientBacterial) {
+        effectSeverity = 'parcial';
+        summary = `Antimicrobiano pertinente (${cleanDrug} ${cleanDose}) para el foco infeccioso: cobertura etiológica ambulatoria adecuada, sin efecto modificador STAT inmediato en signos vitales.`;
+        patientFeelingNote = 'Ya tomé/recibí la primera dosis para la infección, doctor.';
       } else {
         effectSeverity = 'sin_cambio';
         summary = `Antimicrobiano (${cleanDrug} ${cleanDose}) administrado sin foco bacteriano demostrado: no modifica el cuadro agudo ni los signos vitales.`;
@@ -3954,7 +4269,10 @@ export function applyStatIntervention(
         summary = `${cleanDrug} (${cleanDose}) sin malaria/paludismo documentado: sin beneficio clínico.`;
         patientFeelingNote = 'No noté mejoría con esa medicina, doctor.';
       }
-    } else if (/\b(piridostigmina|neostigmina|inmunoglobulina|igiv)\b/.test(drugNorm)) {
+    } else if (
+      /\b(piridostigmina|neostigmina|inmunoglobulina intravenosa|igiv)\b/.test(drugNorm) ||
+      (/\binmunoglobulina\b/.test(drugNorm) && !/\b(anti-?d|rhogam|rho)\b/.test(drugNorm))
+    ) {
       if (isMyasthenia) {
         rr = clamp(rr + (rr < 14 ? 4 : 0), 10, 34);
         spo2 = clamp(spo2 + (spo2 < 94 ? 5 : 0), 75, 99);
@@ -4052,7 +4370,7 @@ export function applyStatIntervention(
       /\b(propofol|haloperidol|clorfeniramina|difenhidramina|sulfato de magnesio|mgso4|magnesio)\b/.test(drugNorm);
     const hasPriorOpioid =
       cum.unreversedOpioidMeq > 0 ||
-      /\b(morfina|fentanilo|tramadol|meperidina|oxicodona|buprenorfina)\b/.test(flags.bgMedsNorm);
+      (!isSerotoninSyndrome && /\b(morfina|fentanilo|oxicodona|metadona|buprenorfina)\b/.test(flags.bgMedsNorm));
     const hasPriorBenzo =
       cum.unreversedBenzoDeq > 0 ||
       /\b(diazepam|lorazepam|midazolam|clonazepam|alprazolam)\b/.test(flags.bgMedsNorm);
@@ -4076,6 +4394,7 @@ export function applyStatIntervention(
     const isKRaisingNow = /\b(cloruro de potasio|kcl|espironolactona|amilorida|enalapril|enalaprilat|captopril|losartan)\b/.test(drugNorm) || isNsaidDrug;
     const hasPriorKclOrKsparing = /\b(cloruro de potasio|kcl|espironolactona|amilorida)\b/.test(combinedContextNorm);
     const hasPriorAceiArb = /\b(enalapril|enalaprilat|captopril|losartan|valsartan|lisinopril)\b/.test(combinedContextNorm);
+    const hasAcuteSessionAceiArbOrK = /\b(enalapril|enalaprilat|captopril|losartan|valsartan|lisinopril|espironolactona|amilorida|cloruro de potasio|kcl)\b/.test(priorAllNorm);
 
     const isKLoweringNow = /\b(insulina|salbutamol|albuterol|furosemida)\b/.test(drugNorm);
     const kLoweringList = ['insulina', 'salbutamol', 'furosemida'];
@@ -4106,9 +4425,9 @@ export function applyStatIntervention(
       isNitrateNow ||
       isPde5Now ||
       isFuroNow ||
-      /\b(hidralazina|nitroprusiato|nifedipin|nicardipin|amlodipino|propofol|metamizol)\b/.test(drugNorm);
+      /\b(hidralazina|nitroprusiato|nifedipin[oa]?|nicardipin[oa]?|amlodipino|propofol|metamizol)\b/.test(drugNorm);
     const priorHypotensiveCount = previousHistory.filter((h) =>
-      /\b(labetalol|hidralazina|nifedipin|nitroprusiato|nicardipin|enalapril|losartan|captopril|amlodipino|metoprolol|nitroglicerina|furosemida|verapamilo|diltiazem|sildenafil|propofol)\b/.test(
+      /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat[o]?|enalapril|losartan|captopril|amlodipino|metoprolol|nitroglicerina|furosemida|verapamilo|diltiazem|sildenafil|propofol)\b/.test(
         norm(h.drug)
       )
     ).length;
@@ -4174,9 +4493,13 @@ export function applyStatIntervention(
 
     // I4. Sinergia hemorrágica (Anticoagulante/Fibrinolítico + AINE/Antiagregante/Doble antitrombótico)
     if (
-      ((isAnticoagNow || isLyticNow) && (hasPriorNsaid || hasPriorLytic || (hasPriorAnticoag && isLyticNow) || (hasPriorAntiplatelet && !isIschemicChestPain))) ||
+      ((isAnticoagNow || isLyticNow) &&
+        (hasPriorNsaid ||
+          hasPriorLytic ||
+          (hasPriorAnticoag && isLyticNow) ||
+          (hasPriorAntiplatelet && !isIschemicChestPain && !isIschemicStroke))) ||
       (isNsaidDrug && (hasPriorAnticoag || hasPriorLytic || hasPriorAntiplatelet)) ||
-      (isAntiplateletNow && hasPriorLytic)
+      (isAntiplateletNow && hasPriorLytic && !isIschemicStroke)
     ) {
       sys = clamp(sys - 18, 52, 220);
       dia = clamp(dia - 10, 30, 130);
@@ -4201,10 +4524,18 @@ export function applyStatIntervention(
       ((/\b(cloruro de potasio|kcl|espironolactona|amilorida)\b/.test(drugNorm)) && (hasPriorAceiArb || hasPriorNsaid)) ||
       ((isAceiArbNow || isNsaidDrug) && hasPriorKclOrKsparing)
     ) {
-      hr = clamp(hr - 10, 36, 170);
-      sys = clamp(sys - 8, 60, 220);
-      effectSeverity = 'reaccion_adversa';
-      interactionNotes.push('INTERACCIÓN ELECTROLÍTICA (Hiperkalemia sinérgica): retención aditiva de potasio con riesgo de trastorno de conducción cardíaca');
+      const isKReplacementNeeded =
+        (/\b(cloruro de potasio|kcl)\b/.test(drugNorm) &&
+          !hasAcuteSessionAceiArbOrK &&
+          (isVentricularTachycardia || /\b(hipokalemia|hipopotasemia)\b/.test(flags.fullCaseNorm)));
+      if (isKReplacementNeeded) {
+        interactionNotes.push('PRECAUCIÓN ELECTROLÍTICA: reposición de K⁺ en paciente con IECA/ARA-II crónico requiere monitorización seriada de K⁺ sérico');
+      } else {
+        hr = clamp(hr - 10, 36, 170);
+        sys = clamp(sys - 8, 60, 220);
+        effectSeverity = 'reaccion_adversa';
+        interactionNotes.push('INTERACCIÓN ELECTROLÍTICA (Hiperkalemia sinérgica): retención aditiva de potasio con riesgo de trastorno de conducción cardíaca');
+      }
     }
 
     // I7. Hipokalemia aditiva (Insulina + Salbutamol + Furosemida)
@@ -4444,6 +4775,9 @@ export function auditMedicationPlanSafety(
     isAcetaminophenTox,
     isParkinson,
     isAvBlock,
+    isAfibRvr,
+    isIschemicStroke,
+    isAcutePulmonaryEmbolism,
     isMyxedemaComa,
     isSerotoninSyndrome,
   } = flags;
@@ -4566,11 +4900,11 @@ export function auditMedicationPlanSafety(
 
     // 4. Antihipertensivos sobredosis / vía incompatible / betabloqueador en shock
     if (
-      /\b(labetalol|hidralazina|nitroprusiato|nifedipin|enalaprilat|nicardipin|losartan|amlodipino|captopril|metoprolol)\b/.test(
+      /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|enalaprilat[o]?|nicardipin[oa]?|losartan|amlodipino|captopril|metoprolol)\b/.test(
         drugNorm
       )
     ) {
-      if (isIV && /\b(losartan|amlodipino|captopril|nifedipin)\b/.test(drugNorm) && !/\b(o|\/)\b/.test(routeNorm)) {
+      if (isIV && /\b(losartan|amlodipino|captopril|nifedipin[oa]?)\b/.test(drugNorm) && !/\b(o|\/)\b/.test(routeNorm)) {
         flagError(
           `¡ERROR CRÍTICO FARMACOLÓGICO!: Formulación oral (${item.drug}) prescrita por vía intravenosa (${item.route}).`
         );
@@ -4667,15 +5001,23 @@ export function auditMedicationPlanSafety(
       }
     }
 
-    // 9. Anticoagulantes / Fibrinolíticos en sangrado activo o sobredosis
+    // 9. Anticoagulantes / Fibrinolíticos en sangrado activo, IAMSEST/FA o sobredosis
     if (
-      /\b(alteplasa|tenecteplasa|estreptoquinasa|heparina|enoxaparina|warfarina|apixaban|rivaroxaban)\b/.test(
+      /\b(alteplasa|tenecteplasa|estreptoquinasa|heparina|enoxaparina|warfarina|apixaban|rivaroxaban|dabigatran|edoxaban)\b/.test(
         drugNorm
       )
     ) {
       if (isActiveBleed || isDengue) {
         flagError(
           `¡ERROR CRÍTICO DE SEGURIDAD!: Prescripción de anticoagulante o fibrinolítico (${item.drug}) en paciente con hemorragia activa o dengue; riesgo de exanguinación fatal.`
+        );
+        continue;
+      }
+      const isFibrinolyticRx = /\b(alteplasa|tenecteplasa|estreptoquinasa)\b/.test(drugNorm);
+      const isNonStemiOrUaPlan = /\b(iamsest|scasest|angina inestable|infarto sin elevacion)\b/.test(diagNorm) || diagNorm.includes('takotsubo');
+      if (isFibrinolyticRx && (isNonStemiOrUaPlan || (isAfibRvr && !isIschemicStroke && !isAcutePulmonaryEmbolism))) {
+        flagError(
+          `¡ERROR CRÍTICO DE SEGURIDAD!: Fibrinolítico (${item.drug}) está absolutamente contraindicado en ${isAfibRvr ? 'Fibrilación Auricular' : 'IAMSEST / SCASEST / Angina Inestable'}; incrementa mortalidad y riesgo de hemorragia intracerebral.`
         );
         continue;
       }
@@ -5028,9 +5370,9 @@ export function auditMedicationPlanSafety(
       propofolRxMg += (pItem.mg ?? 100) * mult;
       cnsIds.push(item.id);
     }
-    if (/\b(labetalol|hidralazina|nifedipin|nitroprusiato|nicardipin|enalaprilat|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(dN)) {
+    if (/\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat[o]?|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/.test(dN)) {
       const ahtRegex =
-        /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/;
+        /\b(labetalol|hidralazina|nifedipin[oa]?|nitroprusiato|nicardipin[oa]?|enalaprilat[o]?|enalapril|losartan|captopril|amlodipino|esmolol|metoprolol|atenolol|propranolol)\b/;
       const pAht = extractDrugSpecificDose(ahtRegex, item, weightKg);
       if (pAht !== null) {
         ahtRxEq += getAntihypertensiveEquivUnits(dN, pAht, doseN, rN) * mult;

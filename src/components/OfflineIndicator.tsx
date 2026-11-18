@@ -29,7 +29,9 @@ export const OfflineIndicator: React.FC = () => {
       className="fixed bottom-3 md:bottom-4 left-3 right-3 sm:left-4 sm:right-auto max-w-[calc(100vw-24px)] z-50 flex items-center gap-2 rounded-xl bg-amber-50/95 border border-amber-300 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-lg backdrop-blur-sm"
     >
       <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
-      <span className="min-w-0 leading-snug">Modo Offline Activo — Motor clínico local operando</span>
+      <span className="min-w-0 leading-snug">
+        Sin conexión — Base clínica local verificada activa (actualización en línea no comprobada)
+      </span>
     </div>
   );
 };

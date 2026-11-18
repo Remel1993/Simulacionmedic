@@ -18,6 +18,8 @@ interface TreatmentTabProps {
   onPendingDraftChange?: (draft?: MedicationItem) => void;
   isEcoeMode?: boolean;
   gameMode?: GameMode;
+  patientAge?: number;
+  patientWeightKg?: number;
 }
 
 export const TreatmentTab: React.FC<TreatmentTabProps> = ({
@@ -34,6 +36,8 @@ export const TreatmentTab: React.FC<TreatmentTabProps> = ({
   onPendingDraftChange,
   isEcoeMode = false,
   gameMode = 'medico_general',
+  patientAge,
+  patientWeightKg,
 }) => {
   const [newDrug, setNewDrug] = useState('');
   const [newDose, setNewDose] = useState('');
@@ -140,10 +144,38 @@ export const TreatmentTab: React.FC<TreatmentTabProps> = ({
       {/* 1. Tratamiento Farmacológico Dinámico */}
       <div className="bg-white border border-[#72A98A] rounded-2xl p-4 sm:p-5 space-y-4 shadow-[0_2px_8px_rgba(67,134,107,0.06)]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2EAE4] pb-3">
-          <label className="text-xs font-bold text-[#43866B] flex items-center gap-2">
-            <Pill className="w-4 h-4 shrink-0" />
-            <span>1. Tratamiento Farmacológico Propuesto *</span>
-          </label>
+          <div className="space-y-0.5">
+            <label className="text-xs font-bold text-[#43866B] flex items-center gap-2">
+              <Pill className="w-4 h-4 shrink-0" />
+              <span>1. Tratamiento Farmacológico Propuesto *</span>
+            </label>
+            {(typeof patientAge === 'number' || (typeof patientWeightKg === 'number' && patientWeightKg > 0)) && (
+              <p className="text-[11px] text-[#55685F] tabular-nums">
+                {typeof patientAge === 'number' && patientAge < 12 ? (
+                  <>
+                    Paciente pediátrico ({patientAge} años)
+                    <span aria-hidden="true"> · </span>
+                    Peso de referencia:{' '}
+                    {typeof patientWeightKg === 'number' && patientWeightKg > 0
+                      ? `${patientWeightKg} kg`
+                      : `~${patientAge < 1 ? 7 : Math.max(8, patientAge * 2 + 8)} kg (estimado)`}
+                    <span aria-hidden="true"> · </span>
+                    Verifique cálculo en mg/kg y dosis máxima
+                  </>
+                ) : (
+                  <>
+                    {typeof patientWeightKg === 'number' && patientWeightKg > 0
+                      ? `Peso registrado: ${patientWeightKg} kg · `
+                      : ''}
+                    {typeof patientAge === 'number' && patientAge >= 65
+                      ? `Adulto mayor (${patientAge} años) · `
+                      : ''}
+                    Precise dosis, vía, frecuencia, duración y ajuste renal/hepático si aplica
+                  </>
+                )}
+              </p>
+            )}
+          </div>
           <span className="text-xs text-[#55685F] font-semibold tabular-nums">Puntaje: 15 pts</span>
         </div>
 

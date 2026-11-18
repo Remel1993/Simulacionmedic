@@ -7,9 +7,14 @@ import {
   Specialty,
   UserPreferences,
 } from '../types/clinical';
+import {
+  KnowledgeRecord,
+  KnowledgeSyncState,
+  PendingKnowledgeUpdate,
+} from '../types/knowledge';
 
 const DB_NAME = 'SimuladorMedicoDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORES = {
   HISTORY: 'history',
@@ -17,6 +22,9 @@ const STORES = {
   PROGRESS: 'user_progress',
   PREFERENCES: 'preferences',
   CUSTOM_CASES: 'custom_cases',
+  KNOWLEDGE_RECORDS: 'knowledge_records',
+  KNOWLEDGE_PENDING: 'knowledge_pending',
+  KNOWLEDGE_SYNC_META: 'knowledge_sync_meta',
 } as const;
 
 const LEGACY_KEYS = {
@@ -78,6 +86,15 @@ function openDatabase(): Promise<IDBDatabase | null> {
         }
         if (!db.objectStoreNames.contains(STORES.CUSTOM_CASES)) {
           db.createObjectStore(STORES.CUSTOM_CASES, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORES.KNOWLEDGE_RECORDS)) {
+          db.createObjectStore(STORES.KNOWLEDGE_RECORDS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORES.KNOWLEDGE_PENDING)) {
+          db.createObjectStore(STORES.KNOWLEDGE_PENDING, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORES.KNOWLEDGE_SYNC_META)) {
+          db.createObjectStore(STORES.KNOWLEDGE_SYNC_META, { keyPath: 'id' });
         }
       };
 
@@ -398,3 +415,94 @@ export function computePerformanceStats(history: SavedCaseRecord[]): Performance
     lastActivityAt: history[0]?.date || null,
   };
 }
+
+export async function getStoredKnowledgeRecords(): Promise<KnowledgeRecord[]> {
+  const db = await openDatabase();
+  if (!db) return [];
+
+  try {
+    const tx = db.transaction(STORES.KNOWLEDGE_RECORDS, 'readonly');
+    const res = await requestToPromise<KnowledgeRecord[]>(
+      tx.objectStore(STORES.KNOWLEDGE_RECORDS).getAll()
+    );
+    return res || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveStoredKnowledgeRecord(record: KnowledgeRecord): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  const tx = db.transaction(STORES.KNOWLEDGE_RECORDS, 'readwrite');
+  tx.objectStore(STORES.KNOWLEDGE_RECORDS).put(record);
+  await txDone(tx);
+}
+
+export async function deleteStoredKnowledgeRecord(recordId: string): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  const tx = db.transaction(STORES.KNOWLEDGE_RECORDS, 'readwrite');
+  tx.objectStore(STORES.KNOWLEDGE_RECORDS).delete(recordId);
+  await txDone(tx);
+}
+
+export async function getPendingKnowledgeUpdates(): Promise<PendingKnowledgeUpdate[]> {
+  const db = await openDatabase();
+  if (!db) return [];
+
+  try {
+    const tx = db.transaction(STORES.KNOWLEDGE_PENDING, 'readonly');
+    const res = await requestToPromise<PendingKnowledgeUpdate[]>(
+      tx.objectStore(STORES.KNOWLEDGE_PENDING).getAll()
+    );
+    return res || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function savePendingKnowledgeUpdate(update: PendingKnowledgeUpdate): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  const tx = db.transaction(STORES.KNOWLEDGE_PENDING, 'readwrite');
+  tx.objectStore(STORES.KNOWLEDGE_PENDING).put(update);
+  await txDone(tx);
+}
+
+export async function deletePendingKnowledgeUpdate(updateId: string): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  const tx = db.transaction(STORES.KNOWLEDGE_PENDING, 'readwrite');
+  tx.objectStore(STORES.KNOWLEDGE_PENDING).delete(updateId);
+  await txDone(tx);
+}
+
+export async function getKnowledgeSyncState(): Promise<KnowledgeSyncState | null> {
+  const db = await openDatabase();
+  if (!db) return null;
+
+  try {
+    const tx = db.transaction(STORES.KNOWLEDGE_SYNC_META, 'readonly');
+    const res = await requestToPromise<KnowledgeSyncState | undefined>(
+      tx.objectStore(STORES.KNOWLEDGE_SYNC_META).get('default')
+    );
+    return res || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveKnowledgeSyncState(state: KnowledgeSyncState): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  const tx = db.transaction(STORES.KNOWLEDGE_SYNC_META, 'readwrite');
+  tx.objectStore(STORES.KNOWLEDGE_SYNC_META).put({ ...state, id: 'default' });
+  await txDone(tx);
+}
+

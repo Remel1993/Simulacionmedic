@@ -91,18 +91,18 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
     >
       {/* Slim Header Strip */}
       <div
-        className={`px-3.5 sm:px-5 py-2 flex flex-wrap items-center justify-between gap-2 border-b ${
+        className={`px-3.5 sm:px-5 min-h-[48px] py-1.5 flex items-center justify-between gap-2 border-b ${
           isCriticalMonitor
             ? 'bg-rose-50 border-rose-200'
             : 'bg-[#E4F1E8] border-[#CFE4D6]'
         }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <Activity
             className={`w-4 h-4 shrink-0 ${isCriticalMonitor ? 'text-rose-600' : 'text-[#2F7A63]'}`}
           />
           <span
-            className={`text-xs sm:text-sm font-bold whitespace-nowrap ${
+            className={`text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 ${
               isCriticalMonitor ? 'text-rose-950' : 'text-[#1F4B3A]'
             }`}
           >
@@ -110,7 +110,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
           </span>
           {!deceased && (
             <span
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap border ${
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap shrink-0 border ${
                 isCriticalMonitor
                   ? 'bg-rose-100/90 border-rose-300 text-rose-800'
                   : 'bg-white/80 border-[#B8D7C4] text-[#1F4B3A]'
@@ -126,13 +126,13 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
             </span>
           )}
           <span
-            className={`hidden sm:inline ${isCriticalMonitor ? 'text-rose-300' : 'text-[#72A98A]'}`}
+            className={`hidden sm:inline shrink-0 ${isCriticalMonitor ? 'text-rose-300' : 'text-[#72A98A]'}`}
             aria-hidden="true"
           >
             ·
           </span>
           <span
-            className={`hidden sm:inline text-xs font-semibold truncate ${
+            className={`hidden sm:inline text-xs font-semibold truncate min-w-0 ${
               deceased
                 ? 'text-rose-700 font-bold'
                 : isCriticalMonitor
@@ -186,7 +186,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
         <div className="grid grid-cols-12 lg:grid-cols-7 gap-1.5 sm:gap-2 tabular-nums">
           {/* 1. Presión Arterial + PAM */}
           <div
-            className={`col-span-4 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-4 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isHypotensive
                 ? 'bg-rose-50/80 border-rose-200'
                 : isHypertensive
@@ -194,7 +194,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                   : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Activity
                 className={`w-3 h-3 shrink-0 ${
                   isHypotensive ? 'text-rose-600' : isHypertensive ? 'text-amber-600' : 'text-[#2F7A63]'
@@ -213,7 +213,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
 
           {/* 2. Frecuencia Cardíaca */}
           <div
-            className={`col-span-4 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-4 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isBradycardic
                 ? 'bg-rose-50/80 border-rose-200'
                 : isTachycardic
@@ -221,7 +221,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                   : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Heart
                 className={`w-3 h-3 shrink-0 ${!deceased ? 'animate-pulse ' : ''}${
                   isBradycardic ? 'text-rose-600' : isTachycardic ? 'text-amber-600' : 'text-[#2F7A63]'
@@ -241,7 +241,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
 
           {/* 3. Frecuencia Respiratoria */}
           <div
-            className={`col-span-4 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-4 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isBradypneic
                 ? 'bg-rose-50/80 border-rose-200'
                 : isTachypneic
@@ -249,7 +249,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                   : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Wind className="w-3 h-3 text-[#2F7A63] shrink-0" />
               <span>FR</span>
             </div>
@@ -265,11 +265,11 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
 
           {/* 4. Temperatura */}
           <div
-            className={`col-span-3 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-3 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isFebrile ? 'bg-rose-50/80 border-rose-200' : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Thermometer className={`w-3 h-3 shrink-0 ${isFebrile ? 'text-rose-600' : 'text-[#43866B]'}`} />
               <span>T°</span>
             </div>
@@ -284,11 +284,11 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
 
           {/* 5. SpO2 */}
           <div
-            className={`col-span-3 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-3 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isHypoxemic ? 'bg-rose-50/80 border-rose-200' : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Droplets className={`w-3 h-3 shrink-0 ${isHypoxemic ? 'text-rose-600' : 'text-[#0369A1]'}`} />
               <span>SpO₂</span>
             </div>
@@ -304,7 +304,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
           {/* 6. Glucemia */}
           <div
             title="Glucemia capilar (Glucometría)"
-            className={`col-span-3 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-3 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isHypoglycemic || isSevereHyperglycemic
                 ? 'bg-rose-50/80 border-rose-200'
                 : isModerateHyperglycemic
@@ -312,7 +312,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                   : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Droplet className="w-3 h-3 text-amber-600 shrink-0" />
               <span>Gluc</span>
             </div>
@@ -328,11 +328,11 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
 
           {/* 7. Glasgow */}
           <div
-            className={`col-span-3 lg:col-span-1 rounded-xl border px-2 py-1.5 flex flex-col justify-center text-center transition-colors ${
+            className={`col-span-3 lg:col-span-1 h-[54px] sm:h-[56px] rounded-xl border px-1.5 sm:px-2 py-1.5 flex flex-col justify-center text-center overflow-hidden transition-colors ${
               isLowGlasgow ? 'bg-rose-50/80 border-rose-200' : 'bg-white border-[#E2EAE4]'
             }`}
           >
-            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none">
+            <div className="flex items-center justify-center gap-1 text-[10px] font-semibold text-[#55685F] leading-none whitespace-nowrap">
               <Brain className={`w-3 h-3 shrink-0 ${isLowGlasgow ? 'text-rose-600' : 'text-[#43866B]'}`} />
               <span>GCS</span>
             </div>
@@ -364,28 +364,28 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
           indices.bmi !== null ||
           indices.pao2Fio2 !== null) &&
           !deceased && (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-[#E2EAE4] text-[11px] text-[#55685F] tabular-nums">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 min-h-[34px] rounded-xl bg-white border border-[#E2EAE4] text-[11px] text-[#55685F] tabular-nums">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="font-semibold text-[#263A32]">Somatometría e índices:</span>
+              <span className="font-semibold text-[#263A32] whitespace-nowrap">Somatometría e índices:</span>
               {typeof vitals.weightKg === 'number' && (
-                <span>
+                <span className="whitespace-nowrap">
                   Peso: <strong className="text-[#263A32]">{vitals.weightKg} kg</strong>
                 </span>
               )}
               {typeof vitals.heightCm === 'number' && (
-                <span>
+                <span className="whitespace-nowrap">
                   Talla: <strong className="text-[#263A32]">{vitals.heightCm} cm</strong>{' '}
                   <span className="text-[#718078]">({(vitals.heightCm / 100).toFixed(2)} m)</span>
                 </span>
               )}
               {indices.bmi !== null && (
-                <span>
+                <span className="whitespace-nowrap">
                   IMC: <strong className="text-[#263A32]">{indices.bmi} kg/m²</strong>
                   {indices.bmiLabel ? ` (${indices.bmiLabel})` : ''}
                 </span>
               )}
               {indices.qsofaScore !== null && (
-                <span>
+                <span className="whitespace-nowrap inline-block min-w-[68px]">
                   qSOFA:{' '}
                   <strong
                     className={
@@ -401,7 +401,7 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                 </span>
               )}
               {indices.pao2Fio2 !== null && (
-                <span>
+                <span className="whitespace-nowrap">
                   PaO₂/FiO₂ (Kirby):{' '}
                   <strong
                     className={
@@ -417,39 +417,52 @@ export const VitalSignsMonitor: React.FC<VitalSignsMonitorProps> = ({
                 </span>
               )}
             </div>
-            <span className="sm:hidden text-[10px] text-[#718078]">{bounds.summaryText}</span>
+            <span className="sm:hidden text-[10px] text-[#718078] truncate">{bounds.summaryText}</span>
           </div>
         )}
 
-        {evolutionState && (evolutionState.activeAlerts.length > 0 || evolutionState.trajectory !== 'estable') && (
-          <div
-            className={`px-3 py-1.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
-              evolutionState.trajectory === 'critico' || evolutionState.trajectory === 'deterioro'
-                ? 'bg-rose-50 border-rose-200 text-rose-900'
-                : evolutionState.trajectory === 'mejorando'
-                  ? 'bg-[#E4F1E8] border-[#72A98A]/60 text-[#1F4B3A]'
-                  : 'bg-amber-50 border-amber-200 text-amber-900'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <AlertTriangle
-                className={`w-3.5 h-3.5 shrink-0 ${
-                  evolutionState.trajectory === 'critico' || evolutionState.trajectory === 'deterioro'
-                    ? 'text-rose-600'
-                    : evolutionState.trajectory === 'mejorando'
-                      ? 'text-[#43866B]'
-                      : 'text-amber-600'
-                }`}
-              />
-              <span className="font-semibold">
-                {evolutionState.activeAlerts[0] || evolutionState.summaryNote}
+        {/* Fixed-Height Clinical Evolution Status Strip (prevents sudden vertical page shifts) */}
+        {evolutionState && (() => {
+          const hasAlert = evolutionState.activeAlerts.length > 0 || evolutionState.trajectory !== 'estable';
+          const statusMessage = hasAlert
+            ? evolutionState.activeAlerts[0] || evolutionState.summaryNote
+            : evolutionState.summaryNote || 'Parámetros clínicos sin deterioro agudo en este intervalo.';
+          const isBad = evolutionState.trajectory === 'critico' || evolutionState.trajectory === 'deterioro';
+          const isGood = evolutionState.trajectory === 'mejorando';
+
+          return (
+            <div
+              title={statusMessage}
+              className={`h-[44px] sm:h-[38px] px-3 rounded-xl border text-xs flex items-center justify-between gap-2 overflow-hidden transition-colors ${
+                !hasAlert
+                  ? 'bg-white border-[#E2EAE4] text-[#55685F]'
+                  : isBad
+                    ? 'bg-rose-50 border-rose-200 text-rose-900'
+                    : isGood
+                      ? 'bg-[#E4F1E8] border-[#72A98A]/60 text-[#1F4B3A]'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                {hasAlert ? (
+                  <AlertTriangle
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isBad ? 'text-rose-600' : isGood ? 'text-[#43866B]' : 'text-amber-600'
+                    }`}
+                  />
+                ) : (
+                  <Activity className="w-3.5 h-3.5 shrink-0 text-[#43866B]" />
+                )}
+                <span className={`${hasAlert ? 'font-semibold' : 'font-medium'} line-clamp-2 sm:line-clamp-1 leading-tight`}>
+                  {statusMessage}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider shrink-0 whitespace-nowrap">
+                Evolución: {evolutionState.trajectory}
               </span>
             </div>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider shrink-0">
-              Evolución: {evolutionState.trajectory}
-            </span>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </section>
   );
